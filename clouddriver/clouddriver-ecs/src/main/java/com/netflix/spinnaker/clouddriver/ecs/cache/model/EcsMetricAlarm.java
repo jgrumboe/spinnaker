@@ -16,13 +16,23 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.cache.model;
 
-import com.amazonaws.services.cloudwatch.model.MetricAlarm;
+import java.util.Collection;
+import java.util.Collections;
 import lombok.Data;
 
+/**
+ * Plain POJO replacement for the former v1-SDK-inheriting EcsMetricAlarm. No longer extends
+ * com.amazonaws.services.cloudwatch.model.MetricAlarm.
+ */
 @Data
-public class EcsMetricAlarm extends MetricAlarm {
+public class EcsMetricAlarm {
+  private String alarmArn;
+  private String alarmName;
   private String accountName;
   private String region;
+  private Collection<String> alarmActions = Collections.emptyList();
+  private Collection<String> okActions = Collections.emptyList();
+  private Collection<String> insufficientDataActions = Collections.emptyList();
 
   public EcsMetricAlarm withAccountName(String accountName) {
     setAccountName(accountName);
@@ -32,5 +42,24 @@ public class EcsMetricAlarm extends MetricAlarm {
   public EcsMetricAlarm withRegion(String region) {
     setRegion(region);
     return this;
+  }
+
+  public EcsMetricAlarm withAlarmName(String alarmName) {
+    setAlarmName(alarmName);
+    return this;
+  }
+
+  public EcsMetricAlarm withAlarmArn(String alarmArn) {
+    setAlarmArn(alarmArn);
+    return this;
+  }
+
+  // Kept setOKActions name for backward compat with cache client code
+  public void setOKActions(Collection<String> okActions) {
+    this.okActions = okActions;
+  }
+
+  public Collection<String> getOKActions() {
+    return okActions;
   }
 }
