@@ -16,32 +16,107 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
+import com.amazonaws.services.ecs.AmazonECS;
 import com.amazonaws.services.ecs.model.CreateServiceRequest;
 import com.amazonaws.services.ecs.model.DeploymentCircuitBreaker;
 import com.amazonaws.services.ecs.model.DeploymentConfiguration;
+import com.amazonaws.services.ecs.model.Service;
+import com.amazonaws.services.ecs.model.TaskDefinition;
+import com.amazonaws.services.ecs.model.UpdateServiceRequest;
+import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
+import com.netflix.spinnaker.clouddriver.aws.security.AssumeRoleAmazonCredentials;
+import com.netflix.spinnaker.clouddriver.aws.security.NetflixAssumeRoleAmazonCredentials;
+import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
+import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName;
+import com.netflix.spinnaker.clouddriver.ecs.security.NetflixAssumeRoleEcsCredentials;
 import com.netflix.spinnaker.moniker.Namer;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Create-server-group operation for the opt-in {@code ecs-native} provider.
  *
- * <p>Phase 2a: it reuses all of {@link CreateServerGroupAtomicOperation}'s task-definition,
- * load-balancer, networking, scaling and tagging logic, and diverges only in the native ECS {@link
- * DeploymentConfiguration}: the original provider hard-codes {@code minimumHealthyPercent=100},
- * {@code maximumPercent=200} and {@code circuitBreaker.rollback=false}. Here those come from the
- * {@link EcsNativeCreateServerGroupDescription}, so a native deploy can tune the rolling bounds and
- * opt into automatic ECS rollback on a failed deployment.
+ * <p>It reuses all of {@link CreateServerGroupAtomicOperation}'s task-definition, load-balancer,
+ * networking, scaling and tagging logic, and diverges in two ways:
  *
- * <p>In-place {@code UpdateService} against a durable service (rather than creating a new versioned
- * service per deploy) is a later phase.
+ * <ol>
+ *   <li>The native ECS {@link DeploymentConfiguration} (rolling bounds + circuit-breaker rollback)
+ *       is configurable rather than hard-coded (see {@link #makeServiceRequest}).
+ *   <li>When {@link EcsNativeCreateServerGroupDescription#isInPlaceUpdate()} is set and a source
+ *       server group exists, the redeploy rolls that durable service in place via a native {@code
+ *       UpdateService} instead of creating a new versioned service (see {@link #operate}).
+ * </ol>
+ *
+ * <p>The shared {@link CreateServerGroupAtomicOperation} is not modified; this operation is a
+ * subclass so the original {@code ecs} provider is unaffected.
  */
 public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroupAtomicOperation {
 
   public EcsNativeCreateServerGroupAtomicOperation(
       EcsNativeCreateServerGroupDescription description) {
     super(description);
+  }
+
+  @Override
+  public DeploymentResult operate(List priorOutputs) {
+    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
+
+    if (nativeDescription.isInPlaceUpdate()) {
+      String existingServiceName = resolveExistingServiceName();
+      if (existingServiceName != null) {
+        return updateExistingServiceInPlace(existingServiceName);
+      }
+      updateTaskStatus(
+          "No existing ecs-native service found for in-place update; creating the initial durable service.");
+    }
+
+    return super.operate(priorOutputs);
+  }
+
+  /** The service to roll in place, taken from the deploy source; {@code null} on first deploy. */
+  protected String resolveExistingServiceName() {
+    CreateServerGroupDescription.Source source = description.getSource();
+    if (source != null && StringUtils.isNotBlank(source.getAsgName())) {
+      return source.getAsgName();
+    }
+    return null;
+  }
+
+  private DeploymentResult updateExistingServiceInPlace(String existingServiceName) {
+    updateTaskStatus(
+        "Rolling ecs-native service "
+            + existingServiceName
+            + " in place via native UpdateService...");
+
+    AmazonECS ecs = getAmazonEcsClient();
+    String taskRoleArn = resolveTaskRoleArn(getCredentials());
+
+    // Register a new revision under the same family as the existing service.
+    EcsServerGroupName serverGroupName = new EcsServerGroupName(existingServiceName);
+    TaskDefinition taskDefinition = registerTaskDefinition(ecs, taskRoleArn, serverGroupName);
+
+    UpdateServiceRequest request =
+        new UpdateServiceRequest()
+            .withCluster(description.getEcsClusterName())
+            .withService(existingServiceName)
+            .withTaskDefinition(taskDefinition.getTaskDefinitionArn())
+            .withForceNewDeployment(true);
+
+    DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
+    if (deploymentConfiguration != null) {
+      request.setDeploymentConfiguration(deploymentConfiguration);
+    }
+
+    Service service = ecs.updateService(request).getService();
+    updateTaskStatus("Done rolling ecs-native service " + existingServiceName + " in place.");
+
+    return buildDeploymentResult(service);
   }
 
   @Override
@@ -56,10 +131,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
         super.makeServiceRequest(
             taskDefinitionArn, newServerGroupName, desiredCount, namer, taggingEnabled);
 
-    // description is the package-private field on AbstractEcsAtomicOperation; the converter always
-    // builds the native subtype for this operation.
-    EcsNativeCreateServerGroupDescription nativeDescription =
-        (EcsNativeCreateServerGroupDescription) description;
+    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
 
     DeploymentConfiguration deploymentConfiguration = request.getDeploymentConfiguration();
     if (deploymentConfiguration == null) {
@@ -84,5 +156,73 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
 
     request.setDeploymentConfiguration(deploymentConfiguration);
     return request;
+  }
+
+  /**
+   * Builds a {@link DeploymentConfiguration} only when the description specifies one, so an in-place
+   * update that only changes the task definition does not overwrite the service's existing rolling
+   * bounds.
+   */
+  private DeploymentConfiguration buildDeploymentConfiguration() {
+    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
+    boolean hasConfig =
+        nativeDescription.getMinimumHealthyPercent() != null
+            || nativeDescription.getMaximumPercent() != null
+            || nativeDescription.isEnableDeploymentCircuitBreaker()
+            || nativeDescription.isDeploymentCircuitBreakerRollback();
+    if (!hasConfig) {
+      return null;
+    }
+
+    DeploymentConfiguration deploymentConfiguration = new DeploymentConfiguration();
+    if (nativeDescription.getMinimumHealthyPercent() != null) {
+      deploymentConfiguration.setMinimumHealthyPercent(
+          nativeDescription.getMinimumHealthyPercent());
+    }
+    if (nativeDescription.getMaximumPercent() != null) {
+      deploymentConfiguration.setMaximumPercent(nativeDescription.getMaximumPercent());
+    }
+    deploymentConfiguration.setDeploymentCircuitBreaker(
+        new DeploymentCircuitBreaker()
+            .withEnable(nativeDescription.isEnableDeploymentCircuitBreaker())
+            .withRollback(nativeDescription.isDeploymentCircuitBreakerRollback()));
+    return deploymentConfiguration;
+  }
+
+  /**
+   * Resolves the task role ARN from the account credentials. Mirrors the (private) inference in the
+   * shared create operation; exposed as {@code protected} so it can be overridden in tests.
+   */
+  protected String resolveTaskRoleArn(AmazonCredentials credentials) {
+    String role;
+    if (credentials instanceof AssumeRoleAmazonCredentials) {
+      role = ((AssumeRoleAmazonCredentials) credentials).getAssumeRole();
+    } else if (credentials instanceof NetflixAssumeRoleAmazonCredentials) {
+      role = ((NetflixAssumeRoleAmazonCredentials) credentials).getAssumeRole();
+    } else if (credentials instanceof NetflixAssumeRoleEcsCredentials) {
+      role = ((NetflixAssumeRoleEcsCredentials) credentials).getAssumeRole();
+    } else {
+      throw new UnsupportedOperationException(
+          "The given kind of credentials is not supported for ecs-native in-place updates.");
+    }
+    if (!role.startsWith("arn:")) {
+      return String.format("arn:aws:iam::%s:%s", credentials.getAccountId(), role);
+    }
+    return role;
+  }
+
+  private DeploymentResult buildDeploymentResult(Service service) {
+    Map<String, String> namesByRegion = new HashMap<>();
+    namesByRegion.put(getRegion(), service.getServiceName());
+
+    DeploymentResult result = new DeploymentResult();
+    result.setServerGroupNames(
+        Collections.singletonList(getRegion() + ":" + service.getServiceName()));
+    result.setServerGroupNameByRegion(namesByRegion);
+    return result;
+  }
+
+  private EcsNativeCreateServerGroupDescription nativeDescription() {
+    return (EcsNativeCreateServerGroupDescription) description;
   }
 }
