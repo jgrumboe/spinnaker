@@ -17,8 +17,8 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative;
 
 import com.netflix.spinnaker.clouddriver.ecs.EcsNativeOperation;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.CreateServerGroupAtomicOperation;
+import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
+import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.EcsNativeCreateServerGroupAtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport;
@@ -32,13 +32,13 @@ public class EcsNativeCreateServerGroupAtomicOperationConverter
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new CreateServerGroupAtomicOperation(convertDescription(input));
+    return new EcsNativeCreateServerGroupAtomicOperation(convertDescription(input));
   }
 
   @Override
-  public CreateServerGroupDescription convertDescription(Map input) {
-    CreateServerGroupDescription converted =
-        getObjectMapper().convertValue(input, CreateServerGroupDescription.class);
+  public EcsNativeCreateServerGroupDescription convertDescription(Map input) {
+    EcsNativeCreateServerGroupDescription converted =
+        getObjectMapper().convertValue(input, EcsNativeCreateServerGroupDescription.class);
     converted.setCredentials(getCredentialsObject(input.get("credentials").toString()));
 
     return converted;
