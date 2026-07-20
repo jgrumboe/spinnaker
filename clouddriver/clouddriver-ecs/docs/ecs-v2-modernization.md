@@ -1,4 +1,4 @@
-# RFC: Modernizing Spinnaker's Amazon ECS support (ECS v2)
+# RFC: A second, native ECS deployment provider (`ecs-native`)
 
 Status: Draft / for discussion
 Scope: clouddriver, orca, deck
@@ -6,166 +6,157 @@ Author: (proposal)
 
 ## 1. Summary
 
-Spinnaker's Amazon ECS provider was built in 2018 by mapping Netflix's EC2
-mental model (clusters + versioned server groups) onto ECS. Since then AWS has
-turned an ECS *deployment* into a first-class, observable resource with native
-rolling updates, deployment circuit breakers with automatic rollback,
-deployment alarms, and — more recently — native blue/green deployments inside
-the ECS deployment controller (no CodeDeploy required).
+Spinnaker's existing Amazon ECS provider (`ecs`) models deployments on Netflix's
+EC2 concepts: a "server group" is a whole ECS Service (`app-stack-detail-vNNN`),
+every deploy creates a brand-new service, and rollout strategy (red/black,
+highlander) is orchestrated by Orca disabling/destroying the old service. It
+does not use ECS's native deployment lifecycle (rolling + circuit breaker with
+rollback, deployment alarms, native blue/green, observable service
+deployments).
 
-This document describes the gap between what Spinnaker does today and what ECS
-now offers natively, and proposes an "ECS v2" integration that treats the ECS
-Service as the durable unit and delegates rollout mechanics to ECS's native
-deployment lifecycle. It is designed to ship incrementally and to coexist with
-the current provider rather than replace it in one step.
+Rather than change the existing provider, this RFC proposes a **second,
+opt-in provider — `ecs-native`** — that keeps the ECS Service as the durable
+unit and delegates rollout to ECS's native deployment lifecycle. Users choose
+it **per pipeline** by selecting the `ecs-native` deploy/clone stage.
 
-## 2. Current state ("v1")
+Design constraints agreed:
+- The existing `ecs` provider is **not modified**. It remains the default.
+- `ecs-native` adds a **new write/deploy path only**; it **reuses** the existing
+  ECS accounts, caching agents, and cluster/load-balancer/instance **views**.
+- Selection is **per pipeline / per stage** via the cloud-provider id.
 
-### 2.1 Conceptual mapping
+## 2. Why a second provider (not a rewrite)
 
-| Spinnaker concept        | ECS mapping today                                  | Where |
+- Zero risk to existing ECS users; no behavior change unless a pipeline opts in.
+- Spinnaker keys deploy stages by `cloudProvider`, so a distinct provider id
+  gives per-pipeline choice for free: adding a Deploy/Clone stage lets the user
+  pick "Amazon ECS (native)".
+- The running resources are the *same* ECS objects, so duplicating the entire
+  read/caching/view stack is wasteful. `ecs-native` differs from `ecs` only in
+  *how it rolls out*, so only the write path is new.
+
+## 3. Current `ecs` provider (baseline)
+
+| Spinnaker concept        | `ecs` mapping today                                | Where |
 |--------------------------|----------------------------------------------------|-------|
 | Cluster                  | Task-definition family `app-stack-detail`          | `names/EcsServerGroupName.getFamilyName()` |
-| Server group             | A whole **ECS Service** `app-stack-detail-vNNN`    | `names/EcsServerGroupName.getServiceName()` |
-| New version (v001→v002)  | **A brand-new ECS Service**                        | `deploy/ops/CreateServerGroupAtomicOperation` |
+| Server group             | A whole ECS Service `app-stack-detail-vNNN`        | `names/EcsServerGroupName.getServiceName()` |
+| New version (v001→v002)  | A **brand-new** ECS Service                        | `deploy/ops/CreateServerGroupAtomicOperation` |
 | Deploy strategy          | Orca synthetic stages disable/shrink/destroy old   | `RedBlackStrategy`, `HighlanderStrategy` |
 
-Version resolution (`names/EcsServerGroupNameResolver`) lists all services in
-the ECS cluster, reads each service's Moniker from its tags, and picks the next
-free sequence number in a 0–999 namespace.
-
-### 2.2 How a deploy actually runs
-
-1. Deck wizard (`deck/packages/ecs`) collects the command; ECS registers only
-   `['redblack']` as an allowed deployment strategy (`ecs.module.ts`).
-2. Orca's generic `AbstractDeployStrategyStage` resolves the strategy name and
-   composes synthetic stages; `EcsServerGroupCreator` passes the context
-   straight through to clouddriver (no ECS-specific deploy logic in orca).
-3. Clouddriver `CreateServerGroupAtomicOperation`:
-   `RegisterTaskDefinition` → `CreateService` (a **new** service `…-vNNN`) →
-   `registerScalableTarget` → optionally copy scaling policies.
-4. Orca strategy stages then `disableCluster` (set `desiredCount=0`, wait a
-   hard-coded minimum of 90s for connection draining via
-   `WaitForClusterDisableTask`) and `shrinkCluster`/`destroy` the old service.
-
-### 2.3 Native ECS features currently used — and not
-
-Used (minimally):
-- Default `ECS` rolling controller (never set explicitly, so it defaults).
-- `DeploymentConfiguration` with **hard-coded** `minimumHealthyPercent=100`,
-  `maximumPercent=200` (`CreateServerGroupAtomicOperation`, ~line 536).
-- `DeploymentCircuitBreaker` — `enable` is user-toggleable
-  (`enableDeploymentCircuitBreaker`), but `.withRollback(false)` is
-  **hard-coded off**.
-
-Not used at all (verified by repo-wide grep in `clouddriver-ecs`):
-- `deploymentController` is never set → no native blue/green, no `EXTERNAL`,
-  no `CODE_DEPLOY`.
-- No deployment alarms.
-- No observation of the native ECS deployment resource
-  (`ListServiceDeployments` / `DescribeServiceDeployments`).
+Native features currently unused (verified by grep in `clouddriver-ecs`):
+- `deploymentController` never set → no native blue/green, no `CODE_DEPLOY`.
+- `minimumHealthyPercent=100`/`maximumPercent=200` hard-coded; circuit-breaker
+  `rollback` hard-coded off (`CreateServerGroupAtomicOperation`, ~line 536).
+- No deployment alarms; no observation of the native `serviceDeployment`.
 - `UpdateServiceAndTaskConfigAtomicOperation` and `BasicEcsDeployHandler` are
-  **unimplemented stubs** (`// TODO`). There is no in-place service update
-  path; every rollout is a new service.
-- Still on **AWS SDK v1** (`com.amazonaws.services.ecs`), which is end-of-life.
+  unimplemented stubs — no in-place update path.
+- AWS SDK v1 (EOL).
 
-### 2.4 Cost of the v1 model
+## 4. `ecs-native` provider design
 
-- New ECS Service per version → churn on target-group registration,
-  service-discovery registration, and autoscaling-target creation.
-- Orphaned/draining services and a fixed 90s drain wait regardless of the
-  service's real health signal.
-- Spinnaker re-implements, at the cluster level, an orchestration (red/black)
-  that ECS now performs natively inside one durable service.
-- Rollback = re-enable the old service, rather than the native ECS rollback.
+Core thesis: **the ECS Service is durable; the rollout is delegated to ECS's
+native deployment lifecycle.**
 
-## 3. What AWS ECS offers natively now
+### 4.1 What is new (write path)
 
-- **Deployment circuit breaker with automatic rollback** on the rolling
-  controller.
-- **Deployment alarms** — bind CloudWatch alarms to trigger rollback.
-- **Native blue/green in the ECS deployment controller** — traffic shifting,
-  bake time, and lifecycle hook Lambdas, without CodeDeploy.
-- **A first-class, queryable deployment lifecycle** — `ListServiceDeployments`,
-  `DescribeServiceDeployments`, `StopServiceDeployment` — so a rollout has a
-  real status (`IN_PROGRESS`, `SUCCESSFUL`, `ROLLBACK_*`, `STOPPED`) instead of
-  being inferred from instances draining.
+- **In-place deploy:** `RegisterTaskDefinition` + `UpdateService` against a
+  long-lived service, producing a native `serviceDeployment` Spinnaker tracks.
+  New services are only created on first deploy.
+- **First-class deployment configuration** exposed end-to-end:
+  - `deploymentController`: `ECS` rolling or native blue/green.
+  - Configurable `minimumHealthyPercent` / `maximumPercent`.
+  - Circuit breaker with a real **rollback** toggle.
+  - **Deployment alarms** — bind CloudWatch alarms (or a Kayenta verdict) to
+    native rollback.
+  - Blue/green: bake time, lifecycle hook Lambda ARNs.
+- **Deployment-aware status:** a new Orca `WaitForEcsServiceDeploymentTask`
+  polls `DescribeServiceDeployments` and maps native states (`IN_PROGRESS`,
+  `SUCCESSFUL`, `ROLLBACK_*`, `STOPPED`) to stage status — replacing the
+  instances-draining heuristic and the fixed 90s wait.
+- **Rollback** = `StopServiceDeployment` / update-to-previous-revision, not
+  re-enabling an old service.
+- **AWS SDK v2** for the ECS client (needed for the newer deployment APIs).
 
-## 4. Proposed "ECS v2" design
+### 4.2 What is reused (read path)
 
-Core thesis: **the ECS Service is the durable unit; the rollout is delegated to
-ECS's native deployment lifecycle.**
+- **Accounts:** `ecs-native` credentials are a thin wrapper over the same
+  underlying AWS/ECS account config, so no new account configuration is needed;
+  the same accounts appear under both providers.
+- **Caching:** no new caching agents. Existing `ecs` agents already cache all
+  ECS services/clusters/task-defs in the account regardless of who created
+  them.
+- **Views:** cluster / load-balancer / instance / details views are served by
+  the existing `ecs` view providers. Resulting services show up in today's ECS
+  clusters UI.
 
-### 4.1 Durable service + revision model
+### 4.3 Provider registration points
 
-- A v2 "server group" maps to a *service revision / deployment* of one
-  long-lived ECS service, not a new service per version.
-- Deploy = `RegisterTaskDefinition` + `UpdateService` (implement the stubbed
-  update path). ECS produces a `serviceDeployment` that Spinnaker tracks.
-- Eliminates per-version churn of target groups, service discovery, and
-  scaling targets.
+clouddriver:
+- New `EcsNativeCloudProvider` (`id = "ecs-native"`) bean.
+- New operation annotation/converters (mirror `@EcsOperation`) so
+  `createServerGroup` / `cloneServerGroup` / `resizeServerGroup` etc. for
+  `ecs-native` route to the new operations.
+- Thin credentials that reference the existing ECS account config.
 
-### 4.2 First-class deployment configuration (end-to-end)
+orca:
+- New `EcsNativeServerGroupCreator` with `cloudProvider = "ecs-native"`.
+- New `WaitForEcsServiceDeploymentTask`.
 
-Surface these from description → orca passthrough → deck:
-- `deploymentController`: `ECS` rolling or native blue/green.
-- Configurable `minimumHealthyPercent` / `maximumPercent` (stop hard-coding).
-- Circuit breaker with **rollback** exposed as a real toggle.
-- **Deployment alarms** — allow a pipeline to bind CloudWatch alarms (or a
-  Kayenta canary verdict) to native rollback.
-- Blue/green knobs: bake time, lifecycle hook Lambda ARNs.
+deck:
+- New `deck/packages/ecs-native` (or a submodule of `ecs`) registering the
+  cloud provider and the deploy/clone **stages + wizard** for `ecs-native`,
+  reusing the existing ECS details/transformers for the read side.
+- Register any native strategies (`ecsNativeRolling`, `ecsBlueGreen`) restricted
+  to `ecs-native` in the deployment-strategy registry.
 
-### 4.3 Deployment-aware status in orca
+## 5. Per-pipeline selection (how the user picks it)
 
-- New `WaitForEcsServiceDeploymentTask` polls `DescribeServiceDeployments` and
-  maps native states to stage status — replacing the instances-draining
-  heuristic and the fixed 90s wait.
-- Rollback becomes `StopServiceDeployment` / update-to-previous-revision,
-  rather than re-enabling an old service.
+- In a pipeline, adding a **Deploy** or **Clone Server Group** stage offers the
+  provider chooser; `ecs-native` appears as "Amazon ECS (native)" and targets
+  the same accounts.
+- The stage stores `cloudProvider: "ecs-native"`, so Orca resolves the
+  `EcsNativeServerGroupCreator` and clouddriver routes to the native
+  operations — while an `ecs` stage in another pipeline is unaffected.
+- Existing ECS pipelines keep using `ecs` with no change.
 
-### 4.4 New deployment strategies
+## 6. Phased delivery
 
-Register for ECS in the deck strategy registry:
-- `ecsNativeRolling` (rolling + circuit breaker + alarms)
-- `ecsBlueGreen` (native ECS blue/green)
-- Keep `redblack` / `highlander` working for backward compatibility.
-
-### 4.5 AWS SDK v2
-
-Move the ECS client to AWS SDK v2 — required for the newer deployment APIs and
-because SDK v1 is EOL.
-
-## 5. Migration & coexistence
-
-Do **not** replace the v1 provider in one step. Add v2 behind an
-account/service-level flag so existing pipelines and cached server groups keep
-working. Phased delivery:
-
-1. **Foundation (low risk, immediately useful):** implement
-   `UpdateServiceAndTaskConfig`; make `DeploymentConfiguration` fully
-   configurable (min/max %, circuit-breaker rollback).
-2. **Observability:** SDK v2 upgrade + `WaitForEcsServiceDeployment` task
-   reading the native deployment resource.
-3. **Native strategies:** register `ecsNativeRolling` / `ecsBlueGreen`; wire
-   deployment alarms; optional Kayenta hook.
-4. **Deck:** expose controller/percent/rollback/alarm fields; register the new
-   strategies; keep `redblack` for legacy.
-
-## 6. Key files impacted
-
-- `clouddriver-ecs/.../deploy/ops/UpdateServiceAndTaskConfigAtomicOperation.java` (implement stub)
-- `clouddriver-ecs/.../deploy/ops/CreateServerGroupAtomicOperation.java` (~536: un-hard-code deployment config)
-- `clouddriver-ecs/.../deploy/description/CreateServerGroupDescription.java` (new fields)
-- new clouddriver op/description to observe `serviceDeployments`
-- `orca/.../tasks/providers/ecs/EcsServerGroupCreator.groovy` + new `WaitForEcsServiceDeploymentTask`
-- `deck/packages/ecs/.../wizard/pages/AdvancedSettings.tsx`, `ecs.module.ts`, new strategy defs under `deck/packages/core/src/deploymentStrategy/strategies/`
+1. **Provider skeleton:** `ecs-native` cloud provider + credentials wrapper
+   (reusing ecs accounts), operation annotation/converters, orca creator, deck
+   provider registration + a create/clone stage that initially mirrors `ecs`
+   behavior. Verifies the plumbing and per-pipeline selection end-to-end.
+2. **Native rollout core:** in-place `UpdateService`, fully-configurable
+   `DeploymentConfiguration` (min/max %, circuit breaker + rollback), SDK v2.
+3. **Observability:** `WaitForEcsServiceDeploymentTask` reading the native
+   deployment resource; map states to stage status/rollback.
+4. **Blue/green + alarms:** native blue/green controller, bake time, lifecycle
+   hooks, deployment alarms; optional Kayenta hook.
+5. **Deck polish:** native strategy registry entries and wizard fields for the
+   new deployment configuration.
 
 ## 7. Open questions
 
-- Backward compatibility of caching/indexing when a "server group" is a service
-  revision rather than a distinct service (impacts the deck clusters view).
-- How native blue/green traffic shifting interacts with Spinnaker's existing
-  load-balancer/target-group model.
-- Whether to bridge native deployment alarms to Kayenta, or keep them separate.
-- Fargate vs EC2 capacity-provider behavior differences under native blue/green.
-- Rollback semantics surfaced to the user when ECS auto-rolls-back mid-stage.
+- Should `ecs-native` credentials be auto-derived from every `ecs` account, or
+  opt-in per account via config?
+- Deck: separate `packages/ecs-native` vs. a mode inside `packages/ecs` that
+  reuses most components — how much UI to share.
+- Native blue/green traffic shifting vs. Spinnaker's existing target-group
+  model.
+- How ECS auto-rollback mid-deploy is surfaced as stage status in the UI.
+- Fargate vs EC2 capacity-provider behavior differences under native
+  blue/green.
+
+## 8. Key files (for reference; new code lives in new classes/modules)
+
+Existing `ecs` (read/reused, **unchanged**):
+- `clouddriver-ecs/.../provider/agent/*CachingAgent.java`, `provider/view/*`
+- `clouddriver-ecs/.../names/EcsServerGroupName*.java`
+
+New `ecs-native` (write path):
+- clouddriver: new `EcsNativeCloudProvider`, operation annotation + converters,
+  `deploy/ops/*` (create/clone/resize/update via native lifecycle),
+  credentials wrapper over existing ECS accounts.
+- orca: `EcsNativeServerGroupCreator`, `WaitForEcsServiceDeploymentTask`.
+- deck: `packages/ecs-native` provider + deploy/clone stage & wizard; strategy
+  defs under `packages/core/src/deploymentStrategy/strategies/`.
