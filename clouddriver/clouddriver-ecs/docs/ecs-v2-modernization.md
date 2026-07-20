@@ -167,14 +167,21 @@ deck:
      to a new task definition and/or native deployment configuration
      (min/max %, circuit breaker + rollback) and can force a new rolling
      deployment. Spock spec covers the configured and no-config paths.
-   - 2c (pending, needs a decision): make the `ecs-native` *create/deploy* path
-     use a single durable service (update-in-place on redeploy) instead of a
-     new versioned `…-vNNN` service per deploy. This cannot be done zero-touch —
-     the create operation's `operate()`, `createService`,
-     `buildEcsServerGroupName`, and `inferAssumedRoleArn` are `private`, and the
-     naming currently produces versioned names — so it requires either a
-     behavior-preserving visibility widening (private → protected) of those
-     seams, or a standalone deploy operation that duplicates that logic.
+   - 2c (done, standalone/no-touch): the `ecs-native` create path now supports a
+     durable-service deploy. `EcsNativeCreateServerGroupAtomicOperation`
+     overrides `operate()`: when the opt-in `inPlaceUpdate` flag is set and a
+     deploy source exists, it rolls that existing service in place via native
+     `UpdateService` (reusing the shared, `protected` `registerTaskDefinition`
+     for a new revision) instead of creating a new versioned service; the first
+     deploy (no source) still delegates to `super.operate()`. Implemented as a
+     subclass, so the shared create operation is untouched. Role inference and
+     deployment-result building are re-derived in the subclass (the originals
+     are `private`).
+   - Important constraint: `inPlaceUpdate` must be paired with a no-op / native
+     deployment strategy. It must NOT be combined with red/black, which would
+     disable and destroy the service that was just updated. Wiring a native
+     (strategy=none) deploy in orca/deck is the follow-up that makes this safe
+     to select in the UI.
    - SDK v2 upgrade.
 3. **Observability:** `WaitForEcsServiceDeploymentTask` reading the native
    deployment resource; map states to stage status/rollback.

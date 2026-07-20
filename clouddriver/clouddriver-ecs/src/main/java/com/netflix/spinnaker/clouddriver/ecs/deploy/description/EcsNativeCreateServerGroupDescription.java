@@ -45,4 +45,13 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
    * deployment is automatically rolled back by ECS to the last completed deployment.
    */
   boolean deploymentCircuitBreakerRollback;
+
+  /**
+   * When {@code true}, redeploys roll the existing durable service in place via a native ECS {@code
+   * UpdateService} (identified by {@link #getSource()}) instead of creating a new versioned service.
+   * The first deploy, or a deploy with no source, still creates the service. This is opt-in and must
+   * be paired with a no-op / native deployment strategy: it must NOT be combined with a red/black
+   * strategy, which would disable and destroy the service that was just updated.
+   */
+  boolean inPlaceUpdate;
 }
