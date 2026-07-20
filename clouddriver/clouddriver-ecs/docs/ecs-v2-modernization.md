@@ -80,28 +80,51 @@ native deployment lifecycle.**
 
 ### 4.2 What is reused (read path)
 
-- **Accounts:** `ecs-native` credentials are a thin wrapper over the same
-  underlying AWS/ECS account config, so no new account configuration is needed;
-  the same accounts appear under both providers.
+- **Accounts:** none are duplicated. Clouddriver resolves an operation's
+  account purely by name (`AbstractAtomicOperationsCredentialsSupport
+  .getCredentialsObject(name)` ignores the cloud provider), so an `ecs-native`
+  stage simply targets an existing ECS account by name. No `ecs-native`
+  credentials/config subsystem is required, and no operator config is needed to
+  "enable" accounts for the new provider. (This supersedes the earlier
+  opt-in-accounts idea, which is unnecessary given name-based resolution.)
 - **Caching:** no new caching agents. Existing `ecs` agents already cache all
   ECS services/clusters/task-defs in the account regardless of who created
   them.
 - **Views:** cluster / load-balancer / instance / details views are served by
-  the existing `ecs` view providers. Resulting services show up in today's ECS
-  clusters UI.
+  the existing `ecs` view providers. Because the deploy reuses the existing
+  ECS credentials (whose `cloudProvider` is `ecs`), the resulting services show
+  up in today's ECS clusters UI — `ecs-native` is purely a deploy-time routing
+  concept.
+
+### 4.2.1 How dispatch actually routes to the new path
+
+`AnnotationsBasedAtomicOperationsRegistry` selects a converter by the cloud
+provider's operation-annotation type plus the operation name. So a stage with
+`cloudProvider: "ecs-native"` resolves `EcsNativeCloudProvider` →
+`@EcsNativeOperation`, then matches the `@EcsNativeOperation` converter for that
+operation. The existing `@EcsOperation` converters are never matched for
+`ecs-native` (and vice versa), so the two providers are fully isolated at the
+dispatch layer with no change to existing code. The `ecs-native` converters
+must **not** subclass the `@EcsOperation` converters: Spring's
+`getBeansWithAnnotation` walks superclasses, which would leak a child into the
+`ecs` matches and break the existing provider — they are standalone classes.
 
 ### 4.3 Provider registration points
 
-clouddriver:
-- New `EcsNativeCloudProvider` (`id = "ecs-native"`) bean.
-- New operation annotation/converters (mirror `@EcsOperation`) so
-  `createServerGroup` / `cloneServerGroup` / `resizeServerGroup` etc. for
-  `ecs-native` route to the new operations.
-- Thin credentials that reference the existing ECS account config.
+clouddriver (done for Phase 1):
+- `EcsNativeCloudProvider` (`id = "ecs-native"`) bean.
+- `@EcsNativeOperation` annotation + a full set of standalone converters
+  (`deploy/converters/ecsnative/`) so `createServerGroup` / `cloneServerGroup` /
+  `resizeServerGroup` / enable / disable / destroy / start / stop / terminate /
+  scaling-policy for `ecs-native` route to operations. Phase 1 reuses the
+  existing ECS descriptions/operations; native semantics diverge in later
+  phases.
+- No new credentials (see 4.2).
 
-orca:
-- New `EcsNativeServerGroupCreator` with `cloudProvider = "ecs-native"`.
-- New `WaitForEcsServiceDeploymentTask`.
+orca (creator done for Phase 1):
+- `EcsNativeServerGroupCreator extends EcsServerGroupCreator`, overriding only
+  `getCloudProvider()`.
+- New `WaitForEcsServiceDeploymentTask` (later phase).
 
 deck:
 - New `deck/packages/ecs-native` (or a submodule of `ecs`) registering the
@@ -122,10 +145,13 @@ deck:
 
 ## 6. Phased delivery
 
-1. **Provider skeleton:** `ecs-native` cloud provider + credentials wrapper
-   (reusing ecs accounts), operation annotation/converters, orca creator, deck
-   provider registration + a create/clone stage that initially mirrors `ecs`
-   behavior. Verifies the plumbing and per-pipeline selection end-to-end.
+1. **Provider skeleton:** `ecs-native` cloud provider + operation
+   annotation/converters + orca creator (all reusing existing ecs
+   accounts/descriptions/operations), then deck provider registration + a
+   create/clone stage that initially mirrors `ecs` behavior. The clouddriver +
+   orca half is complete; deck registration is the remaining piece. Until deck
+   lands, `ecs-native` is selectable by setting `cloudProvider: "ecs-native"`
+   on a deploy/clone stage in pipeline JSON.
 2. **Native rollout core:** in-place `UpdateService`, fully-configurable
    `DeploymentConfiguration` (min/max %, circuit breaker + rollback), SDK v2.
 3. **Observability:** `WaitForEcsServiceDeploymentTask` reading the native
@@ -137,8 +163,10 @@ deck:
 
 ## 7. Open questions
 
-- Should `ecs-native` credentials be auto-derived from every `ecs` account, or
-  opt-in per account via config?
+- Account exposure is resolved: no separate accounts (name-based resolution,
+  see 4.2). Open sub-question: how should deck populate the `ecs-native` stage's
+  account dropdown — reuse the `ecs` account list directly, or expose the
+  accounts under `ecs-native` in `/credentials`?
 - Deck: separate `packages/ecs-native` vs. a mode inside `packages/ecs` that
   reuses most components — how much UI to share.
 - Native blue/green traffic shifting vs. Spinnaker's existing target-group
