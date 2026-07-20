@@ -160,13 +160,21 @@ deck:
      already-`protected` `makeServiceRequest` (calls `super`, then replaces the
      `DeploymentConfiguration`). Zero changes to existing `ecs` code; unset
      fields preserve today's 100/200 + no-rollback behavior.
-   - 2b (pending, needs a decision): in-place `UpdateService` against a durable
-     service instead of a new versioned service per deploy. This cannot be done
-     zero-touch — the create operation's `operate()`, `createService`,
-     `buildEcsServerGroupName`, and `inferAssumedRoleArn` are `private` — so it
-     requires either a behavior-preserving visibility widening (private →
-     protected) of those seams in the shared operation, or a standalone
-     operation that duplicates that logic.
+   - 2b (done, additive/no-touch): in-place `UpdateService` as a standalone
+     `EcsNativeUpdateServiceAtomicOperation` (+ `EcsNativeUpdateServiceDescription`),
+     wired to the `ecs-native` `UPDATE_LAUNCH_CONFIG` converter (which for the
+     original provider is an empty stub). It rolls an existing durable service
+     to a new task definition and/or native deployment configuration
+     (min/max %, circuit breaker + rollback) and can force a new rolling
+     deployment. Spock spec covers the configured and no-config paths.
+   - 2c (pending, needs a decision): make the `ecs-native` *create/deploy* path
+     use a single durable service (update-in-place on redeploy) instead of a
+     new versioned `…-vNNN` service per deploy. This cannot be done zero-touch —
+     the create operation's `operate()`, `createService`,
+     `buildEcsServerGroupName`, and `inferAssumedRoleArn` are `private`, and the
+     naming currently produces versioned names — so it requires either a
+     behavior-preserving visibility widening (private → protected) of those
+     seams, or a standalone deploy operation that duplicates that logic.
    - SDK v2 upgrade.
 3. **Observability:** `WaitForEcsServiceDeploymentTask` reading the native
    deployment resource; map states to stage status/rollback.

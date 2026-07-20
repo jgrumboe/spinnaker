@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Lookout, Inc.
+ * Copyright 2026 Spinnaker contributors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,28 +17,33 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative;
 
 import com.netflix.spinnaker.clouddriver.ecs.EcsNativeOperation;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.description.UpdateServiceAndTaskConfigDescription;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.UpdateServiceAndTaskConfigAtomicOperation;
+import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeUpdateServiceDescription;
+import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.EcsNativeUpdateServiceAtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 
+/**
+ * Routes the {@code ecs-native} in-place service update. It replaces (for this provider only) the
+ * unimplemented {@code UpdateServiceAndTaskConfig} stub of the original ECS provider with a real
+ * native {@code UpdateService}.
+ */
 @EcsNativeOperation(AtomicOperations.UPDATE_LAUNCH_CONFIG)
-@Component("ecsNativeUpdateServiceAndTaskConfig")
-public class EcsNativeUpdateServiceAndTaskConfigAtomicOperationConverter
+@Component("ecsNativeUpdateService")
+public class EcsNativeUpdateServiceAtomicOperationConverter
     extends AbstractAtomicOperationsCredentialsSupport {
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new UpdateServiceAndTaskConfigAtomicOperation(convertDescription(input));
+    return new EcsNativeUpdateServiceAtomicOperation(convertDescription(input));
   }
 
   @Override
-  public UpdateServiceAndTaskConfigDescription convertDescription(Map input) {
-    UpdateServiceAndTaskConfigDescription converted =
-        getObjectMapper().convertValue(input, UpdateServiceAndTaskConfigDescription.class);
+  public EcsNativeUpdateServiceDescription convertDescription(Map input) {
+    EcsNativeUpdateServiceDescription converted =
+        getObjectMapper().convertValue(input, EcsNativeUpdateServiceDescription.class);
     converted.setCredentials(getCredentialsObject(input.get("credentials").toString()));
 
     return converted;
