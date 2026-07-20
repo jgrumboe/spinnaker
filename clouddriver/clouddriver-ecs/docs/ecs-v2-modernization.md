@@ -152,8 +152,22 @@ deck:
    orca half is complete; deck registration is the remaining piece. Until deck
    lands, `ecs-native` is selectable by setting `cloudProvider: "ecs-native"`
    on a deploy/clone stage in pipeline JSON.
-2. **Native rollout core:** in-place `UpdateService`, fully-configurable
-   `DeploymentConfiguration` (min/max %, circuit breaker + rollback), SDK v2.
+2. **Native rollout core:**
+   - 2a (done): fully-configurable `DeploymentConfiguration` — `minimumHealthyPercent`
+     / `maximumPercent` and circuit-breaker `rollback` — via
+     `EcsNativeCreateServerGroupDescription` +
+     `EcsNativeCreateServerGroupAtomicOperation`, which overrides only the
+     already-`protected` `makeServiceRequest` (calls `super`, then replaces the
+     `DeploymentConfiguration`). Zero changes to existing `ecs` code; unset
+     fields preserve today's 100/200 + no-rollback behavior.
+   - 2b (pending, needs a decision): in-place `UpdateService` against a durable
+     service instead of a new versioned service per deploy. This cannot be done
+     zero-touch — the create operation's `operate()`, `createService`,
+     `buildEcsServerGroupName`, and `inferAssumedRoleArn` are `private` — so it
+     requires either a behavior-preserving visibility widening (private →
+     protected) of those seams in the shared operation, or a standalone
+     operation that duplicates that logic.
+   - SDK v2 upgrade.
 3. **Observability:** `WaitForEcsServiceDeploymentTask` reading the native
    deployment resource; map states to stage status/rollback.
 4. **Blue/green + alarms:** native blue/green controller, bake time, lifecycle
