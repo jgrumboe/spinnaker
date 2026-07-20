@@ -17,6 +17,12 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops
 
 import com.amazonaws.services.ecs.model.CreateServiceRequest
+import com.amazonaws.services.ecs.model.Service
+import com.amazonaws.services.ecs.model.TaskDefinition
+import com.amazonaws.services.ecs.model.UpdateServiceRequest
+import com.amazonaws.services.ecs.model.UpdateServiceResult
+import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials
+import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsDefaultNamer
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName
@@ -73,5 +79,52 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     request.deploymentConfiguration.maximumPercent == 200
     request.deploymentConfiguration.deploymentCircuitBreaker.enable == false
     request.deploymentConfiguration.deploymentCircuitBreaker.rollback == false
+  }
+
+  def 'resolveExistingServiceName returns the source service when present, otherwise null'() {
+    given:
+    def withSource = new EcsNativeCreateServerGroupDescription(inPlaceUpdate: true)
+    withSource.setSource(new CreateServerGroupDescription.Source(asgName: 'myapp-stack-v003'))
+    def withoutSource = new EcsNativeCreateServerGroupDescription(inPlaceUpdate: true)
+
+    expect:
+    new EcsNativeCreateServerGroupAtomicOperation(withSource).resolveExistingServiceName() == 'myapp-stack-v003'
+    new EcsNativeCreateServerGroupAtomicOperation(withoutSource).resolveExistingServiceName() == null
+  }
+
+  def 'should roll the existing service in place when inPlaceUpdate is set and a source exists'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2-v011'
+    def description = new EcsNativeCreateServerGroupDescription(
+        inPlaceUpdate: true,
+        ecsClusterName: 'my-cluster',
+        minimumHealthyPercent: 50,
+        maximumPercent: 150,
+        enableDeploymentCircuitBreaker: true,
+        deploymentCircuitBreakerRollback: true)
+    description.setSource(new CreateServerGroupDescription.Source(asgName: serviceName))
+
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> new TaskDefinition().withTaskDefinitionArn('new-task-def-arn')
+
+    when:
+    def result = operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest req ->
+      req.cluster == 'my-cluster' &&
+          req.service == serviceName &&
+          req.taskDefinition == 'new-task-def-arn' &&
+          req.forceNewDeployment == true &&
+          req.deploymentConfiguration.minimumHealthyPercent == 50 &&
+          req.deploymentConfiguration.maximumPercent == 150 &&
+          req.deploymentConfiguration.deploymentCircuitBreaker.enable == true &&
+          req.deploymentConfiguration.deploymentCircuitBreaker.rollback == true
+    } as UpdateServiceRequest) >> new UpdateServiceResult().withService(new Service().withServiceName(serviceName))
+    0 * ecs.createService(_)
+    result.serverGroupNameByRegion.containsValue(serviceName)
   }
 }
