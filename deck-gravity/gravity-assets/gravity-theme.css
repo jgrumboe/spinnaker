@@ -1,0 +1,1102 @@
+/**
+ * Gravity Design System Theme Override for Spinnaker Deck
+ *
+ * This CSS remaps Deck's @spinnaker/styleguide CSS custom properties
+ * to Gravity design tokens, giving the UI a Gravity visual identity
+ * without modifying any source code.
+ *
+ * Gravity tokens sourced from @gravity/foundation (2026-07-02)
+ */
+
+/* ============================================================
+   Gravity Font Faces (Bull) — loaded from Gravity CDN
+   ============================================================ */
+@font-face {
+  font-display: swap;
+  font-family: 'Bull';
+  font-style: normal;
+  font-weight: normal;
+  src:
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Regular.woff2') format('woff2'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Regular.woff') format('woff'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-display: swap;
+  font-family: 'Bull';
+  font-style: normal;
+  font-weight: 500;
+  src:
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Medium.woff2') format('woff2'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Medium.woff') format('woff'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Medium.ttf') format('truetype');
+}
+
+@font-face {
+  font-display: swap;
+  font-family: 'Bull';
+  font-style: normal;
+  font-weight: bold;
+  src:
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Bold.woff2') format('woff2'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Bold.woff') format('woff'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Bold.ttf') format('truetype');
+}
+
+/* ============================================================
+   Gravity Foundation Tokens
+   ============================================================ */
+:root {
+  /* --- Gravity Core Tokens --- */
+  --gravity-color-primary: #1B6AEE;
+  --gravity-color-primary-lighter: #3279F0;
+  --gravity-color-primary-darker: #175ACA;
+  --gravity-color-focus: #1B6AEE;
+
+  --gravity-color-accent-informative: #FF9000;
+  --gravity-color-accent-informative-light: #FFF4E6;
+  --gravity-color-accent-negative: #DB0A40;
+  --gravity-color-accent-negative-lighter: #F50B48;
+  --gravity-color-accent-negative-light: #FBE7EC;
+  --gravity-color-accent-positive: #159D48;
+  --gravity-color-accent-positive-light: #D0EBDA;
+
+  --gravity-color-text-dark: #000F1E;
+  --gravity-color-text-dark-subtle: rgba(0,15,30,0.6);
+  --gravity-color-text-dark-muted: rgba(0,15,30,0.4);
+  --gravity-color-text-light: #FFFFFF;
+
+  --gravity-color-surface-dark: #00162B;
+  --gravity-color-surface-dark-lighter: #001C39;
+  --gravity-color-surface-light: #F8F8F8;
+  --gravity-color-surface-light-lighter: #FFFFFF;
+  --gravity-color-surface-light-darker: #EFEFEF;
+  --gravity-color-surface-primary: #DDE9FC;
+  --gravity-color-surface-primary-lighter: #F4F8FE;
+
+  --gravity-color-glass-dark-5: rgba(0,15,30,0.05);
+  --gravity-color-glass-dark-10: rgba(0,15,30,0.1);
+  --gravity-color-glass-dark-20: rgba(0,15,30,0.2);
+  --gravity-color-glass-dark-60: rgba(0,15,30,0.6);
+
+  --gravity-font-family-text: 'Bull', Helvetica, sans-serif;
+  --gravity-font-family-title: 'Bull', Helvetica, sans-serif;
+
+  --gravity-radius-small: 4px;
+  --gravity-radius-medium: 6px;
+  --gravity-radius-large: 8px;
+
+  --gravity-spacing-xx-tight: 4px;
+  --gravity-spacing-x-tight: 8px;
+  --gravity-spacing-tight: 12px;
+  --gravity-spacing-normal: 16px;
+  --gravity-spacing-loose: 24px;
+  --gravity-spacing-x-loose: 32px;
+
+  --gravity-elevation-1: 0px 8px 12px 0px rgba(0,15,30,0.04), 0px 2px 4px 0px rgba(0,15,30,0.02);
+  --gravity-elevation-2: 0px 16px 24px 0px rgba(0,15,30,0.06), 0px 4px 8px 0px rgba(0,15,30,0.02);
+
+  /* ============================================================
+     Deck Styleguide Variable Remapping → Gravity
+     NOTE: !important is required to override webpack-inlined
+     @spinnaker/styleguide CSS which loads dynamically at runtime.
+     ============================================================ */
+
+  /* --- Primary / Brand --- */
+  --color-primary: var(--gravity-color-surface-dark) !important;
+  --color-primary-g1: var(--gravity-color-surface-dark-lighter) !important;
+
+  /* --- Accent (links, buttons, interactive) --- */
+  --color-accent: var(--gravity-color-primary) !important;
+  --color-accent-g1: var(--gravity-color-primary-lighter) !important;
+  --color-accent-g2: var(--gravity-color-surface-light-darker) !important;
+  --color-accent-g3: var(--gravity-color-surface-light-darker) !important;
+
+  /* --- Text --- */
+  --color-text-link: var(--gravity-color-primary) !important;
+  --color-text-link-g1: var(--gravity-color-primary-darker) !important;
+  --color-text-primary: var(--gravity-color-text-dark) !important;
+  --color-text-secondary: var(--gravity-color-text-dark-subtle) !important;
+  --color-text-on-dark: var(--gravity-color-text-light) !important;
+
+  /* --- Neutrals / Surfaces --- */
+  --color-white: #FFFFFF !important;
+  --color-black: var(--gravity-color-text-dark) !important;
+  --color-alabaster: var(--gravity-color-surface-light) !important;
+  --color-seashell: var(--gravity-color-surface-light-darker) !important;
+  --color-porcelain: var(--gravity-color-surface-light-darker) !important;
+  --color-cirrus: var(--gravity-color-surface-primary-lighter) !important;
+  --color-smoke: var(--gravity-color-glass-dark-5) !important;
+  --color-silver: var(--gravity-color-glass-dark-10) !important;
+  --color-alto: var(--gravity-color-glass-dark-10) !important;
+  --color-concrete: var(--gravity-color-glass-dark-20) !important;
+  --color-nobel: var(--gravity-color-text-dark-muted) !important;
+  --color-dovegray: var(--gravity-color-text-dark-subtle) !important;
+  --color-titanium: var(--gravity-color-text-dark-muted) !important;
+  --color-mineshaft: var(--gravity-color-text-dark) !important;
+  --color-charcoal: var(--gravity-color-surface-dark) !important;
+  --color-regal: var(--gravity-color-surface-dark) !important;
+  --color-blumine: var(--gravity-color-primary-darker) !important;
+  --color-divider: var(--gravity-color-glass-dark-10) !important;
+
+  /* --- Semantic Status --- */
+  --color-success: var(--gravity-color-accent-positive) !important;
+  --color-success-light: var(--gravity-color-accent-positive-light) !important;
+  --color-danger: var(--gravity-color-accent-negative) !important;
+  --color-danger-light: var(--gravity-color-accent-negative-light) !important;
+  --color-danger-medium: var(--gravity-color-accent-negative-lighter) !important;
+  --color-warning: var(--gravity-color-accent-informative) !important;
+  --color-warning-light: var(--gravity-color-accent-informative-light) !important;
+  --color-alert: var(--gravity-color-accent-negative) !important;
+  --color-alert-light: var(--gravity-color-accent-negative-light) !important;
+  --color-accessory: var(--gravity-color-accent-informative) !important;
+  --color-accessory-light: var(--gravity-color-accent-informative-light) !important;
+
+  /* --- Status (managed delivery) --- */
+  --color-status-success: var(--gravity-color-accent-positive) !important;
+  --color-status-success-light: var(--gravity-color-accent-positive-light) !important;
+  --color-status-error: var(--gravity-color-accent-negative) !important;
+  --color-status-error-light: var(--gravity-color-accent-negative-light) !important;
+  --color-status-warning: var(--gravity-color-accent-informative) !important;
+  --color-status-warning-light: var(--gravity-color-accent-informative-light) !important;
+  --color-status-info: var(--gravity-color-primary) !important;
+  --color-status-info-light: var(--gravity-color-surface-primary) !important;
+  --color-status-neutral-light: var(--gravity-color-surface-light-darker) !important;
+  --color-status-progress-light: var(--gravity-color-surface-primary) !important;
+
+  /* --- Validation --- */
+  --color-validation-error: var(--gravity-color-accent-negative) !important;
+  --color-validation-error-light: var(--gravity-color-accent-negative-light) !important;
+  --color-validation-success: var(--gravity-color-accent-positive) !important;
+  --color-validation-success-light: var(--gravity-color-accent-positive-light) !important;
+  --color-validation-info: var(--gravity-color-primary) !important;
+  --color-validation-info-light: var(--gravity-color-surface-primary) !important;
+  --color-validation-warning-light: var(--gravity-color-accent-informative-light) !important;
+  --color-validation-black: var(--gravity-color-text-dark) !important;
+
+  /* --- GitHub Diff (unchanged) --- */
+  --color-github-history-add: #d6fcd6 !important;
+  --color-github-history-remove: #fcd6d6 !important;
+
+  /* --- Z-index layers (preserve Deck's defaults) --- */
+  --layer-high: 100 !important;
+  --layer-critical: 10000 !important;
+}
+
+/* ============================================================
+   Typography Override
+   NOTE: Excludes icon font elements (.glyphicon, .fa, .fas, .far, .fab)
+   ============================================================ */
+body,
+html,
+.tooltip,
+.popover,
+.navbar-inverse,
+.navbar-inverse a,
+.navbar-inverse span,
+.navbar-inverse button,
+.navbar-inverse input,
+.navbar-inverse .navbar-brand,
+.select2-container .select2-choices .select2-search-field input,
+.select2-container .select2-choice,
+.select2-container .select2-choices {
+  font-family: var(--gravity-font-family-text) !important;
+}
+
+/* Restore icon font families */
+.glyphicon.glyphicon,
+.navbar-inverse .glyphicon,
+[class*="glyphicon-"],
+i.glyphicon,
+span.glyphicon {
+  font-family: 'Glyphicons Halflings' !important;
+}
+
+.fa.fa, .fas.fas, .far.far, .fab.fab,
+.navbar-inverse .fa,
+i.fa, i.fas, i.far, i.fab,
+[class*="fa-"] {
+  font-family: 'Font Awesome 5 Free' !important;
+}
+
+/* ============================================================
+   Navbar / Header — Gravity dark surface
+   ============================================================ */
+.navbar-inverse {
+  background-color: var(--gravity-color-surface-dark) !important;
+  box-shadow: var(--gravity-elevation-1);
+}
+
+.navbar-inverse,
+.navbar-inverse .navbar-brand,
+.navbar-inverse .navbar-nav > li > a,
+.navbar-inverse .nav-items > li > a {
+  font-family: var(--gravity-font-family-title) !important;
+}
+
+.navbar-inverse .navbar-brand,
+.navbar-inverse .navbar-nav > li > a,
+.navbar-inverse .nav-items > li > a {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.navbar-inverse .navbar-nav > li > a:focus,
+.navbar-inverse .navbar-nav > li > a:hover,
+.navbar-inverse .nav-items > li > a:focus,
+.navbar-inverse .nav-items > li > a:hover,
+.navbar-inverse .nav-items > .active > a,
+.navbar-inverse .nav-items > .active > a:focus,
+.navbar-inverse .nav-items > .active > a:hover,
+.navbar-inverse .navbar-nav > .active > a,
+.navbar-inverse .navbar-nav > .active > a:focus,
+.navbar-inverse .navbar-nav > .active > a:hover,
+.navbar-inverse a.active,
+.navbar-inverse li.active > a,
+.navbar-inverse .nav.nav-items a.active,
+.navbar-inverse .nav.page-nav a.active {
+  background-color: #001C39 !important;
+}
+
+/* ============================================================
+   Buttons — Gravity radius & colors
+   ============================================================ */
+.btn {
+  border-radius: var(--gravity-radius-large) !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:focus,
+.btn:active:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 30%, transparent);
+  outline: none;
+}
+
+.btn-primary {
+  background-color: var(--gravity-color-primary) !important;
+  border-color: var(--gravity-color-primary) !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--gravity-color-primary-darker) !important;
+  border-color: var(--gravity-color-primary-darker) !important;
+}
+
+/* ============================================================
+   Cards & Panels — Gravity elevation and radius
+   ============================================================ */
+.panel,
+.modal-content {
+  border-radius: var(--gravity-radius-large);
+  box-shadow: var(--gravity-elevation-1);
+  border-color: var(--gravity-color-glass-dark-10);
+}
+
+.modal-content {
+  border: 1px solid var(--gravity-color-glass-dark-10);
+}
+
+/* ============================================================
+   Form Controls
+   ============================================================ */
+.form-control,
+.Select-control {
+  border-radius: var(--gravity-radius-small);
+  border-color: var(--gravity-color-glass-dark-20);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-control:focus {
+  border-color: var(--gravity-color-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 15%, transparent);
+}
+
+/* ============================================================
+   Links
+   ============================================================ */
+a {
+  color: var(--gravity-color-primary);
+  transition: color 0.15s ease;
+}
+
+a:hover,
+a:focus {
+  color: var(--gravity-color-primary-darker);
+}
+
+/* ============================================================
+   Loading Placeholder Override (splash screen)
+   ============================================================ */
+.loading-placeholder {
+  background-color: var(--gravity-color-surface-dark) !important;
+  color: var(--gravity-color-text-light) !important;
+}
+
+/* Make the Spinnaker logo visible against the dark Gravity background */
+.loading-placeholder > svg {
+  opacity: 0.85 !important;
+  filter: brightness(1.8) saturate(0.5) !important;
+}
+.loading-placeholder h1,
+.loading-placeholder h2 {
+  font-family: var(--gravity-font-family-title) !important;
+  color: var(--gravity-color-text-light) !important;
+  font-weight: 500 !important;
+}
+
+.loading-placeholder .bar,
+.loading-placeholder div.bar,
+div.loading-placeholder div.bar {
+  background-color: var(--gravity-color-primary) !important;
+  border-radius: var(--gravity-radius-small) !important;
+  min-height: 6px !important;
+}
+
+/* ============================================================
+   Search Header / Infrastructure Section — old teal override
+   ============================================================ */
+.infrastructure-section.search-header,
+.search-header,
+div.infrastructure-section.search-header {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+  background: var(--gravity-color-surface-light-darker) !important;
+}
+
+/* Sidebar / Vertical Navigation — use subtle surface instead of heavy blue */
+.vertical-navigation {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+}
+
+/* Sidebar nav items — use dark text instead of blue for readability */
+.vertical-navigation a,
+.vertical-navigation .nav-category {
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* Active sidebar nav item — subtle primary highlight with left accent border */
+.vertical-navigation a.active,
+.vertical-navigation .active,
+.nav-category.active {
+  background-color: var(--gravity-color-surface-primary-lighter) !important;
+  border-left: 3px solid var(--gravity-color-primary) !important;
+  color: var(--gravity-color-primary) !important;
+}
+
+/* Execution group headers — use lighter surface.
+   NOTE: .execution-group-actions is INSIDE .execution-group-heading .shadowed
+   (same flex row as the pipeline title), so it should NOT have a different
+   background — that creates visual disconnection. */
+.execution-group-actions {
+  background-color: transparent !important;
+}
+
+/* Pipeline heading .shadowed container — make transparent so it
+   inherits from the parent sticky-header context rather than
+   creating a visually disconnected white bar.
+   The .sticky-header parent gets a consistent surface background. */
+.execution-group-heading .shadowed {
+  background-color: transparent !important;
+}
+
+/* The sticky-header wrapping the pipeline name should have a
+   consistent light surface background that visually connects
+   the pipeline name with the trigger/configure controls (they're
+   all in one flex row inside .execution-group-heading). */
+.sticky-header {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+  height: auto !important;
+}
+
+/* Stage details / info tables — subtle background */
+.stage-details {
+  background-color: var(--gravity-color-surface-light) !important;
+}
+
+/* Permalinks content — transparent to blend with the panel container */
+.permalinks-content {
+  background-color: transparent !important;
+}
+
+/* Pipeline execution bars — Gravity accent tokens
+   Now using proper Gravity accent colors for semantic consistency.
+   Detailed stage bar styling is in the "Pipeline Execution Stage Bars"
+   section below. These rules cover progress bars used elsewhere in the UI. */
+.stage-progress .bar.bar-success,
+.progress-bar-success {
+  background-color: var(--gravity-color-accent-positive) !important;
+  border-radius: var(--gravity-radius-small) !important;
+}
+
+.execution-marker.execution-marker-failed,
+.execution-marker.execution-marker-terminal,
+.stage-progress .bar.bar-danger,
+.progress-bar-danger {
+  background-color: var(--gravity-color-accent-negative) !important;
+  border-radius: var(--gravity-radius-small) !important;
+}
+
+/* Table rows with info highlighting — very subtle */
+.table > tbody > tr.info > td {
+  background-color: var(--gravity-color-surface-primary-lighter) !important;
+}
+
+/* Override any remaining hardcoded Spinnaker teal backgrounds */
+[style*="background-color: rgb(215, 232, 237)"],
+[style*="background-color:#D7E8ED"],
+[style*="background: rgb(215, 232, 237)"] {
+  background-color: var(--gravity-color-surface-primary-lighter) !important;
+}
+
+/* ============================================================
+   Cluster Instance Boxes — Tone down icon/text color
+   Per Gravity color guidelines, the primary blue should be used
+   "only scarcely and only to highlight key actionable elements."
+   Small status indicator icons in cluster instance boxes should
+   use a subtler, muted color instead of the full primary blue.
+   ============================================================ */
+.instance {
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+/* ============================================================
+   Scrollbar Styling
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 8px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gravity-color-glass-dark-20);
+  border-radius: var(--gravity-radius-full, 9999px);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gravity-color-glass-dark-60);
+}
+
+/* ============================================================
+   Application-Level Tabs — Gravity Tabs Pattern
+   (Secondary navigation: Pipelines, Clusters, Load Balancers, etc.)
+   Uses underline indicator instead of background highlight,
+   creating clear hierarchy below the main Navigation.
+   NOTE: The top navbar also contains a .nav.nav-items.page-nav list,
+   so these selectors MUST NOT match inside .navbar-inverse.
+   We use :not(.navbar-inverse) .nav... which won't work because
+   there are intermediate elements. Instead, we override back
+   in the Navbar section. Here we just scope more carefully.
+   ============================================================ */
+.nav.nav-items.page-nav > li > a,
+.application-nav a,
+.nav.page-nav > li > a {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 400 !important;
+  color: var(--gravity-color-text-dark) !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  background: transparent !important;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.15s ease;
+  margin-bottom: -1px;
+}
+
+.nav.nav-items.page-nav > li > a:hover,
+.application-nav a:hover,
+.nav.page-nav > li > a:hover {
+  background: var(--gravity-color-surface-light-darker) !important;
+  border-bottom-color: var(--gravity-color-glass-dark-10) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+.nav.nav-items.page-nav > li.active > a,
+.nav.nav-items.page-nav > li > a.active,
+.application-nav a.active,
+.nav.page-nav > li.active > a,
+.nav.page-nav > li > a.active {
+  font-weight: 500 !important;
+  color: var(--gravity-color-primary) !important;
+  border-bottom-color: var(--gravity-color-primary) !important;
+  background: transparent !important;
+}
+
+/* Tab bar container — subtle bottom border to anchor the tabs */
+.nav.nav-items.page-nav,
+.nav.page-nav {
+  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
+  margin-bottom: var(--gravity-spacing-normal) !important;
+}
+
+/* --- Navbar override: undo the application-tab styles inside the top bar ---
+   The navbar also uses .nav.nav-items.page-nav, so we must restore
+   its link colors to light text on dark background here.
+   Per Gravity Navigation guidelines:
+   - Always highlight the page-corresponding item as active.
+   - Inactive items use text-light-subtle (60% opacity white) for hierarchy.
+   - Active item uses full text-light (white) + surface-dark-lighter background.
+   This creates clear visual distinction between active and non-active states. */
+.navbar-inverse .nav.nav-items.page-nav > li > a,
+.navbar-inverse .nav.page-nav > li > a {
+  color: rgba(255, 255, 255, 0.6) !important;
+  border-bottom: none !important;
+  background: transparent !important;
+  padding: 15px !important;
+  margin-bottom: 0 !important;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.navbar-inverse .nav.nav-items.page-nav > li > a:hover,
+.navbar-inverse .nav.nav-items.page-nav > li > a:focus,
+.navbar-inverse .nav.page-nav > li > a:hover,
+.navbar-inverse .nav.page-nav > li > a:focus {
+  background-color: var(--gravity-color-surface-dark-lighter) !important;
+  color: var(--gravity-color-text-light) !important;
+  border-bottom: none !important;
+}
+
+.navbar-inverse .nav.nav-items.page-nav > li.active > a,
+.navbar-inverse .nav.nav-items.page-nav > li > a.active,
+.navbar-inverse .nav.page-nav > li.active > a,
+.navbar-inverse .nav.page-nav > li > a.active {
+  background-color: var(--gravity-color-surface-dark-lighter) !important;
+  color: var(--gravity-color-text-light) !important;
+  font-weight: 500 !important;
+  border-bottom: none !important;
+}
+
+.navbar-inverse .nav.nav-items.page-nav,
+.navbar-inverse .nav.page-nav {
+  border-bottom: none !important;
+  margin-bottom: 0 !important;
+}
+
+/* ============================================================
+   Filter Sidebar — Gravity Filter Sidebar + Panel Pattern
+   Left panel with pipeline and status filters.
+   Uses surface stacking (darker surface = further back).
+   ============================================================ */
+.filter-section,
+.execution-filters,
+.all-filters {
+  background: var(--gravity-color-surface-light) !important;
+  border-right: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding: var(--gravity-spacing-normal) !important;
+}
+
+.filter-section h4,
+.execution-filters h4,
+.all-filters h4,
+.filter-heading,
+.collapsible-filter-section .section-heading {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 700 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  margin-bottom: var(--gravity-spacing-x-tight) !important;
+  padding: var(--gravity-spacing-xx-tight) 0 !important;
+}
+
+/* Filter checkboxes — Gravity primary accent */
+.filter-section input[type="checkbox"],
+.execution-filters input[type="checkbox"],
+.all-filters input[type="checkbox"] {
+  accent-color: var(--gravity-color-primary) !important;
+}
+
+/* Filter search input */
+.filter-section .form-control,
+.execution-filters .form-control {
+  border-radius: var(--gravity-radius-large) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-tight) !important;
+  font-size: 13px !important;
+  background: var(--gravity-color-surface-light-lighter) !important;
+}
+
+.filter-section .form-control:focus,
+.execution-filters .form-control:focus {
+  border-color: var(--gravity-color-primary) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 15%, transparent) !important;
+}
+
+/* ============================================================
+   Execution Group / Pipeline Header — Gravity Toolbar Pattern
+   Pipeline name bar with actions (Configure, Start Manual Execution).
+   NOTE: .execution-group-actions is INSIDE .execution-group-heading
+   (same flex row), so only the heading gets the border-bottom.
+   ============================================================ */
+.execution-group-heading {
+  font-family: var(--gravity-font-family-text) !important;
+  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  align-items: center !important;
+  min-height: 44px !important;
+}
+
+.execution-group-heading h4,
+.execution-group-heading .execution-group-title {
+  font-family: var(--gravity-font-family-title) !important;
+  font-weight: 500 !important;
+  color: var(--gravity-color-text-dark) !important;
+  margin: 0 !important;
+}
+
+/* The .shadowed container is a flex row holding the account badge,
+   pipeline title, and actions — ensure vertical centering */
+.execution-group-heading .shadowed {
+  align-items: center !important;
+  display: flex !important;
+  min-height: 36px !important;
+}
+
+/* The .execution-group-actions sits inside the same flex row as the title,
+   aligned to the right. Remove any border/background to keep it inline.
+   Ensure it's also vertically centered with the title text. */
+.execution-group-heading .execution-group-actions {
+  border-bottom: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: var(--gravity-spacing-x-tight) !important;
+  white-space: nowrap !important;
+}
+
+/* Account tag badge in the heading — keep it vertically centered */
+.execution-group-heading .heading-tag {
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* ============================================================
+   Execution Entries — Gravity List Entry / Panel Pattern
+   Individual pipeline run cards. Surface stacking:
+   background (light) → card (lighter/white) for contrast rhythm.
+   NOTE: .execution-group is inside .execution-groups, not
+   .execution-group-container (which doesn't exist in this DOM).
+   ============================================================ */
+.execution-groups .execution-group,
+.all-execution-groups .execution-group {
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-radius: var(--gravity-radius-large) !important;
+  margin-bottom: var(--gravity-spacing-normal) !important;
+  overflow: hidden;
+}
+
+/* Execution summary section — consistent spacing */
+.execution-summary-section {
+  padding: var(--gravity-spacing-tight) var(--gravity-spacing-normal) !important;
+}
+
+/* Execution trigger metadata (who started it, when) */
+.execution-summary-section h5 {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 500 !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+.execution-summary-section .execution-status-text,
+.execution-summary-section .execution-parameters {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+/* ============================================================
+   Pipeline Execution Stage Bars — Foundation-Aligned Snowflake
+   Per Gravity: accent colors are for text/small indicators.
+   For larger filled areas, use the Gravity accent tokens directly
+   with appropriate border-radius for visual consistency.
+   ============================================================ */
+.execution-marker {
+  border-radius: var(--gravity-radius-small) !important;
+  transition: opacity 0.15s ease;
+}
+
+.execution-marker:hover {
+  opacity: 0.85;
+}
+
+.execution-marker.execution-marker-succeeded {
+  background-color: var(--gravity-color-accent-positive) !important;
+}
+
+.execution-marker.execution-marker-running {
+  background-color: var(--gravity-color-primary) !important;
+}
+
+.execution-marker.execution-marker-not_started,
+.execution-marker.execution-marker-not-started {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+}
+
+.execution-marker.execution-marker-canceled,
+.execution-marker.execution-marker-stopped {
+  background-color: var(--gravity-color-text-dark-muted) !important;
+}
+
+/* Execution status text — semantic colors matching Gravity accents */
+.execution-status .SUCCEEDED,
+.execution-summary .SUCCEEDED,
+[class*="execution-status"] .SUCCEEDED {
+  color: var(--gravity-color-accent-positive) !important;
+  font-weight: 500 !important;
+}
+
+.execution-status .TERMINAL,
+.execution-summary .TERMINAL,
+[class*="execution-status"] .TERMINAL {
+  color: var(--gravity-color-accent-negative) !important;
+  font-weight: 500 !important;
+}
+
+.execution-status .RUNNING,
+.execution-summary .RUNNING,
+[class*="execution-status"] .RUNNING {
+  color: var(--gravity-color-primary) !important;
+  font-weight: 500 !important;
+}
+
+.execution-status .CANCELED,
+.execution-status .STOPPED,
+.execution-summary .CANCELED,
+.execution-summary .STOPPED {
+  color: var(--gravity-color-text-dark-subtle) !important;
+  font-weight: 500 !important;
+}
+
+/* ============================================================
+   Stage Detail Table — Gravity Table Visual Pattern
+   Steps table with Started, Completed, Duration, Status columns.
+   ============================================================ */
+.stage-details table,
+.execution-details table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.stage-details table thead th,
+.execution-details table thead th {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 500 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  background: var(--gravity-color-surface-light) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
+  text-align: left !important;
+}
+
+.stage-details table tbody tr,
+.execution-details table tbody tr {
+  border-bottom: 1px solid var(--gravity-color-glass-dark-5) !important;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.stage-details table tbody tr:hover,
+.execution-details table tbody tr:hover {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+}
+
+.stage-details table tbody tr:last-child,
+.execution-details table tbody tr:last-child {
+  border-bottom: none !important;
+}
+
+.stage-details table tbody td,
+.execution-details table tbody td {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* ============================================================
+   Step Detail Tabs — Nested Tabs (Smaller Hierarchy Level)
+   (Deployment Config / Task Status / Artifact Status)
+   Per Gravity: "Use type to create hierarchy when nested."
+   These are visually subordinate to application-level tabs.
+   ============================================================ */
+.stage-details .nav-tabs,
+.detail-section .nav-tabs,
+.execution-details .nav-tabs {
+  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
+  margin-bottom: var(--gravity-spacing-tight) !important;
+}
+
+.stage-details .nav-tabs > li > a,
+.detail-section .nav-tabs > li > a,
+.execution-details .nav-tabs > li > a {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
+  background: transparent !important;
+  margin-bottom: -1px;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.stage-details .nav-tabs > li > a:hover,
+.detail-section .nav-tabs > li > a:hover,
+.execution-details .nav-tabs > li > a:hover {
+  color: var(--gravity-color-text-dark) !important;
+  border-bottom-color: var(--gravity-color-glass-dark-10) !important;
+  background: transparent !important;
+}
+
+.stage-details .nav-tabs > li.active > a,
+.stage-details .nav-tabs > li > a.active,
+.detail-section .nav-tabs > li.active > a,
+.detail-section .nav-tabs > li > a.active,
+.execution-details .nav-tabs > li.active > a,
+.execution-details .nav-tabs > li > a.active {
+  font-weight: 500 !important;
+  color: var(--gravity-color-primary) !important;
+  border-bottom-color: var(--gravity-color-primary) !important;
+  background: transparent !important;
+}
+
+/* ============================================================
+   Key-Value Definition Lists — Foundation-Based Composition
+   (Deployment Config: Account, Region, Cluster, Strategy, etc.)
+   No direct Gravity component exists; built on Foundation tokens.
+   ============================================================ */
+.stage-details dt,
+.detail-section dt,
+.execution-details dt,
+.dl-horizontal dt {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 500 !important;
+  font-size: 11px !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  padding-top: var(--gravity-spacing-x-tight) !important;
+}
+
+.stage-details dd,
+.detail-section dd,
+.execution-details dd,
+.dl-horizontal dd {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 400 !important;
+  font-size: 14px !important;
+  color: var(--gravity-color-text-dark) !important;
+  padding-bottom: var(--gravity-spacing-x-tight) !important;
+  border-bottom: 1px solid var(--gravity-color-glass-dark-5) !important;
+  margin-bottom: 0 !important;
+}
+
+.stage-details dd:last-of-type,
+.detail-section dd:last-of-type,
+.execution-details dd:last-of-type,
+.dl-horizontal dd:last-of-type {
+  border-bottom: none !important;
+}
+
+/* ============================================================
+   Alert / Callout Banner — Gravity Callout Pattern
+   (e.g., "application has not been configured" warning)
+   Uses left-border accent per Gravity Callout visual style.
+   ============================================================ */
+.alert,
+.alert-info {
+  background: var(--gravity-color-surface-primary-lighter) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-left: 4px solid var(--gravity-color-primary) !important;
+  border-radius: var(--gravity-radius-large) !important;
+  color: var(--gravity-color-text-dark) !important;
+  padding: var(--gravity-spacing-tight) var(--gravity-spacing-normal) !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+}
+
+.alert-warning {
+  background: var(--gravity-color-accent-informative-light) !important;
+  border-left-color: var(--gravity-color-accent-informative) !important;
+}
+
+.alert-danger,
+.alert-error {
+  background: var(--gravity-color-accent-negative-light) !important;
+  border-left-color: var(--gravity-color-accent-negative) !important;
+}
+
+.alert-success {
+  background: var(--gravity-color-accent-positive-light) !important;
+  border-left-color: var(--gravity-color-accent-positive) !important;
+}
+
+.alert a {
+  color: var(--gravity-color-primary) !important;
+  font-weight: 500 !important;
+}
+
+/* Alert dismiss button — subtle and accessible */
+.alert .close,
+.alert button.close {
+  color: var(--gravity-color-text-dark-subtle) !important;
+  opacity: 0.7 !important;
+  font-size: 18px !important;
+}
+
+.alert .close:hover,
+.alert button.close:hover {
+  opacity: 1 !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* ============================================================
+   Execution Details Container — Active selection indicator
+   Deck's original uses a heavy blue box-shadow glow to indicate
+   the selected execution's details. Per Gravity border guidelines,
+   borders should use the glass palette for structural purposes.
+   Replace the blue glow with a subtle, neutral border.
+   ============================================================ */
+.execution-details-container {
+  box-shadow: none !important;
+  border: 1px solid var(--gravity-color-glass-dark-20) !important;
+  border-radius: var(--gravity-radius-large) !important;
+  overflow: hidden !important;
+}
+
+/* ============================================================
+   Execution Detail Panel — Gravity Panel (right side panel)
+   ============================================================ */
+.execution-details-section,
+.execution-detail-section,
+.details-panel {
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border-left: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding: var(--gravity-spacing-normal) !important;
+}
+
+/* Detail panel heading (Stage details: Deploy to PRODUCTION) */
+.execution-details-section h5,
+.stage-details h5,
+.details-panel h5 {
+  font-family: var(--gravity-font-family-title) !important;
+  font-weight: 500 !important;
+  font-size: 15px !important;
+  color: var(--gravity-color-text-dark) !important;
+  margin-bottom: var(--gravity-spacing-tight) !important;
+}
+
+/* Detail panel sub-heading (Duration, etc.) */
+.execution-details-section h6,
+.stage-details h6,
+.details-panel h6 {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 400 !important;
+  font-size: 12px !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  margin-bottom: var(--gravity-spacing-tight) !important;
+}
+
+/* ============================================================
+   Permalinks / Footer Links — Gravity Link Pattern
+   (View as JSON | Permalink + copy button)
+   ============================================================ */
+.permalinks,
+.permalinks-section,
+.execution-permalink {
+  border-top: 1px solid var(--gravity-color-glass-dark-5) !important;
+  padding-top: var(--gravity-spacing-tight) !important;
+  margin-top: var(--gravity-spacing-normal) !important;
+  font-size: 12px !important;
+}
+
+.permalinks a,
+.permalinks-section a,
+.execution-permalink a {
+  color: var(--gravity-color-primary) !important;
+  font-weight: 400 !important;
+  text-decoration: none !important;
+}
+
+.permalinks a:hover,
+.permalinks-section a:hover,
+.execution-permalink a:hover {
+  color: var(--gravity-color-primary-darker) !important;
+  text-decoration: underline !important;
+}
+
+/* Copy-to-clipboard URL field */
+.permalinks input[type="text"],
+.execution-permalink input[type="text"] {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 11px !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  background: var(--gravity-color-surface-light) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-radius: var(--gravity-radius-small) !important;
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
+}
+
+/* ============================================================
+   Execution Controls Bar — Gravity Toolbar visual pattern
+   (Group by, Show N executions, stage durations checkbox)
+   NOTE: height:auto is critical — Deck's original CSS forces a fixed
+   height that clips content when our padding overrides are applied.
+   The clearfix (::after) is needed because children use float:right.
+   margin-top reset fixes Deck's -30px negative margin that was
+   pulling the bar into the element above, causing visual cropping.
+   ============================================================ */
+.execution-groups-header,
+.execution-group-actions-container {
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  height: auto !important;
+  min-height: 40px !important;
+  overflow: visible !important;
+  margin-top: 0 !important;
+  margin-left: 0 !important;
+}
+
+/* Clearfix for float-based layout inside the controls bar */
+.execution-groups-header::after {
+  content: '' !important;
+  display: table !important;
+  clear: both !important;
+}
+
+.execution-groups-header select,
+.execution-group-actions-container select {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 12px !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-radius: var(--gravity-radius-small) !important;
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
+  background: var(--gravity-color-surface-light-lighter) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+.execution-groups-header select:focus,
+.execution-group-actions-container select:focus {
+  border-color: var(--gravity-color-primary) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 15%, transparent) !important;
+}
+
+.execution-groups-header input[type="checkbox"],
+.execution-group-actions-container input[type="checkbox"] {
+  accent-color: var(--gravity-color-primary) !important;
+}

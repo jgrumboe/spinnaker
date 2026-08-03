@@ -1,0 +1,445 @@
+/**
+ * Gravity Design System Theme Override for Spinnaker Deck
+ *
+ * This CSS remaps Deck's @spinnaker/styleguide CSS custom properties
+ * to Gravity design tokens, giving the UI a Gravity visual identity
+ * without modifying any source code.
+ *
+ * Gravity tokens sourced from @gravity/foundation (2026-07-02)
+ */
+
+/* ============================================================
+   Gravity Font Faces (Bull) — loaded from Gravity CDN
+   ============================================================ */
+@font-face {
+  font-display: swap;
+  font-family: 'Bull';
+  font-style: normal;
+  font-weight: normal;
+  src:
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Regular.woff2') format('woff2'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Regular.woff') format('woff'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-display: swap;
+  font-family: 'Bull';
+  font-style: normal;
+  font-weight: 500;
+  src:
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Medium.woff2') format('woff2'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Medium.woff') format('woff'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Medium.ttf') format('truetype');
+}
+
+@font-face {
+  font-display: swap;
+  font-family: 'Bull';
+  font-style: normal;
+  font-weight: bold;
+  src:
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Bold.woff2') format('woff2'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Bold.woff') format('woff'),
+    url('https://rbds-static.redbull.com/@gravity/foundation/latest/fonts/v5.002/BullText-Bold.ttf') format('truetype');
+}
+
+/* ============================================================
+   Gravity Foundation Tokens
+   ============================================================ */
+:root {
+  /* --- Gravity Core Tokens --- */
+  --gravity-color-primary: #1B6AEE;
+  --gravity-color-primary-lighter: #3279F0;
+  --gravity-color-primary-darker: #175ACA;
+  --gravity-color-focus: #1B6AEE;
+
+  --gravity-color-accent-informative: #FF9000;
+  --gravity-color-accent-informative-light: #FFF4E6;
+  --gravity-color-accent-negative: #DB0A40;
+  --gravity-color-accent-negative-lighter: #F50B48;
+  --gravity-color-accent-negative-light: #FBE7EC;
+  --gravity-color-accent-positive: #159D48;
+  --gravity-color-accent-positive-light: #D0EBDA;
+
+  --gravity-color-text-dark: #000F1E;
+  --gravity-color-text-dark-subtle: rgba(0,15,30,0.6);
+  --gravity-color-text-dark-muted: rgba(0,15,30,0.4);
+  --gravity-color-text-light: #FFFFFF;
+
+  --gravity-color-surface-dark: #00162B;
+  --gravity-color-surface-dark-lighter: #001C39;
+  --gravity-color-surface-light: #F8F8F8;
+  --gravity-color-surface-light-lighter: #FFFFFF;
+  --gravity-color-surface-light-darker: #EFEFEF;
+  --gravity-color-surface-primary: #DDE9FC;
+  --gravity-color-surface-primary-lighter: #F4F8FE;
+
+  --gravity-color-glass-dark-5: rgba(0,15,30,0.05);
+  --gravity-color-glass-dark-10: rgba(0,15,30,0.1);
+  --gravity-color-glass-dark-20: rgba(0,15,30,0.2);
+  --gravity-color-glass-dark-60: rgba(0,15,30,0.6);
+
+  --gravity-font-family-text: 'Bull', Helvetica, sans-serif;
+  --gravity-font-family-title: 'Bull', Helvetica, sans-serif;
+
+  --gravity-radius-small: 4px;
+  --gravity-radius-medium: 6px;
+  --gravity-radius-large: 8px;
+
+  --gravity-spacing-xx-tight: 4px;
+  --gravity-spacing-x-tight: 8px;
+  --gravity-spacing-tight: 12px;
+  --gravity-spacing-normal: 16px;
+  --gravity-spacing-loose: 24px;
+  --gravity-spacing-x-loose: 32px;
+
+  --gravity-elevation-1: 0px 8px 12px 0px rgba(0,15,30,0.04), 0px 2px 4px 0px rgba(0,15,30,0.02);
+  --gravity-elevation-2: 0px 16px 24px 0px rgba(0,15,30,0.06), 0px 4px 8px 0px rgba(0,15,30,0.02);
+
+  /* ============================================================
+     Deck Styleguide Variable Remapping → Gravity
+     NOTE: !important is required to override webpack-inlined
+     @spinnaker/styleguide CSS which loads dynamically at runtime.
+     ============================================================ */
+
+  /* --- Primary / Brand --- */
+  --color-primary: var(--gravity-color-surface-dark) !important;
+  --color-primary-g1: var(--gravity-color-surface-dark-lighter) !important;
+
+  /* --- Accent (links, buttons, interactive) --- */
+  --color-accent: var(--gravity-color-primary) !important;
+  --color-accent-g1: var(--gravity-color-primary-lighter) !important;
+  --color-accent-g2: var(--gravity-color-surface-primary-lighter) !important;
+  --color-accent-g3: var(--gravity-color-surface-light-darker) !important;
+
+  /* --- Text --- */
+  --color-text-link: var(--gravity-color-primary) !important;
+  --color-text-link-g1: var(--gravity-color-primary-darker) !important;
+  --color-text-primary: var(--gravity-color-text-dark) !important;
+  --color-text-secondary: var(--gravity-color-text-dark-subtle) !important;
+  --color-text-on-dark: var(--gravity-color-text-light) !important;
+
+  /* --- Neutrals / Surfaces --- */
+  --color-white: #FFFFFF !important;
+  --color-black: var(--gravity-color-text-dark) !important;
+  --color-alabaster: var(--gravity-color-surface-light) !important;
+  --color-seashell: var(--gravity-color-surface-light-darker) !important;
+  --color-porcelain: var(--gravity-color-surface-light-darker) !important;
+  --color-cirrus: var(--gravity-color-surface-primary-lighter) !important;
+  --color-smoke: var(--gravity-color-glass-dark-5) !important;
+  --color-silver: var(--gravity-color-glass-dark-10) !important;
+  --color-alto: var(--gravity-color-glass-dark-10) !important;
+  --color-concrete: var(--gravity-color-glass-dark-20) !important;
+  --color-nobel: var(--gravity-color-text-dark-muted) !important;
+  --color-dovegray: var(--gravity-color-text-dark-subtle) !important;
+  --color-titanium: var(--gravity-color-text-dark-muted) !important;
+  --color-mineshaft: var(--gravity-color-text-dark) !important;
+  --color-charcoal: var(--gravity-color-surface-dark) !important;
+  --color-regal: var(--gravity-color-surface-dark) !important;
+  --color-blumine: var(--gravity-color-primary-darker) !important;
+  --color-divider: var(--gravity-color-glass-dark-10) !important;
+
+  /* --- Semantic Status --- */
+  --color-success: var(--gravity-color-accent-positive) !important;
+  --color-success-light: var(--gravity-color-accent-positive-light) !important;
+  --color-danger: var(--gravity-color-accent-negative) !important;
+  --color-danger-light: var(--gravity-color-accent-negative-light) !important;
+  --color-danger-medium: var(--gravity-color-accent-negative-lighter) !important;
+  --color-warning: var(--gravity-color-accent-informative) !important;
+  --color-warning-light: var(--gravity-color-accent-informative-light) !important;
+  --color-alert: var(--gravity-color-accent-negative) !important;
+  --color-alert-light: var(--gravity-color-accent-negative-light) !important;
+  --color-accessory: var(--gravity-color-accent-informative) !important;
+  --color-accessory-light: var(--gravity-color-accent-informative-light) !important;
+
+  /* --- Status (managed delivery) --- */
+  --color-status-success: var(--gravity-color-accent-positive) !important;
+  --color-status-success-light: var(--gravity-color-accent-positive-light) !important;
+  --color-status-error: var(--gravity-color-accent-negative) !important;
+  --color-status-error-light: var(--gravity-color-accent-negative-light) !important;
+  --color-status-warning: var(--gravity-color-accent-informative) !important;
+  --color-status-warning-light: var(--gravity-color-accent-informative-light) !important;
+  --color-status-info: var(--gravity-color-primary) !important;
+  --color-status-info-light: var(--gravity-color-surface-primary) !important;
+  --color-status-neutral-light: var(--gravity-color-surface-light-darker) !important;
+  --color-status-progress-light: var(--gravity-color-surface-primary) !important;
+
+  /* --- Validation --- */
+  --color-validation-error: var(--gravity-color-accent-negative) !important;
+  --color-validation-error-light: var(--gravity-color-accent-negative-light) !important;
+  --color-validation-success: var(--gravity-color-accent-positive) !important;
+  --color-validation-success-light: var(--gravity-color-accent-positive-light) !important;
+  --color-validation-info: var(--gravity-color-primary) !important;
+  --color-validation-info-light: var(--gravity-color-surface-primary) !important;
+  --color-validation-warning-light: var(--gravity-color-accent-informative-light) !important;
+  --color-validation-black: var(--gravity-color-text-dark) !important;
+
+  /* --- GitHub Diff (unchanged) --- */
+  --color-github-history-add: #d6fcd6 !important;
+  --color-github-history-remove: #fcd6d6 !important;
+
+  /* --- Z-index layers (preserve Deck's defaults) --- */
+  --layer-high: 100 !important;
+  --layer-critical: 10000 !important;
+}
+
+/* ============================================================
+   Typography Override
+   NOTE: Excludes icon font elements (.glyphicon, .fa, .fas, .far, .fab)
+   ============================================================ */
+body,
+html,
+.tooltip,
+.popover,
+.navbar-inverse,
+.navbar-inverse a,
+.navbar-inverse span,
+.navbar-inverse button,
+.navbar-inverse input,
+.navbar-inverse .navbar-brand,
+.select2-container .select2-choices .select2-search-field input,
+.select2-container .select2-choice,
+.select2-container .select2-choices {
+  font-family: var(--gravity-font-family-text) !important;
+}
+
+/* Restore icon font families */
+.glyphicon.glyphicon,
+.navbar-inverse .glyphicon,
+[class*="glyphicon-"],
+i.glyphicon,
+span.glyphicon {
+  font-family: 'Glyphicons Halflings' !important;
+}
+
+.fa.fa, .fas.fas, .far.far, .fab.fab,
+.navbar-inverse .fa,
+i.fa, i.fas, i.far, i.fab,
+[class*="fa-"] {
+  font-family: 'Font Awesome 5 Free' !important;
+}
+
+/* ============================================================
+   Navbar / Header — Gravity dark surface
+   ============================================================ */
+.navbar-inverse {
+  background-color: var(--gravity-color-surface-dark) !important;
+  box-shadow: var(--gravity-elevation-1);
+}
+
+.navbar-inverse,
+.navbar-inverse .navbar-brand,
+.navbar-inverse .navbar-nav > li > a,
+.navbar-inverse .nav-items > li > a {
+  font-family: var(--gravity-font-family-title) !important;
+}
+
+.navbar-inverse .navbar-brand,
+.navbar-inverse .navbar-nav > li > a,
+.navbar-inverse .nav-items > li > a {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.navbar-inverse .navbar-nav > li > a:focus,
+.navbar-inverse .navbar-nav > li > a:hover,
+.navbar-inverse .nav-items > li > a:focus,
+.navbar-inverse .nav-items > li > a:hover,
+.navbar-inverse .nav-items > .active > a,
+.navbar-inverse .nav-items > .active > a:focus,
+.navbar-inverse .nav-items > .active > a:hover,
+.navbar-inverse .navbar-nav > .active > a,
+.navbar-inverse .navbar-nav > .active > a:focus,
+.navbar-inverse .navbar-nav > .active > a:hover,
+.navbar-inverse a.active,
+.navbar-inverse li.active > a,
+.navbar-inverse .nav.nav-items a.active,
+.navbar-inverse .nav.page-nav a.active {
+  background-color: #001C39 !important;
+}
+
+/* ============================================================
+   Buttons — Gravity radius & colors
+   ============================================================ */
+.btn {
+  border-radius: var(--gravity-radius-large) !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:focus,
+.btn:active:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 30%, transparent);
+  outline: none;
+}
+
+.btn-primary {
+  background-color: var(--gravity-color-primary) !important;
+  border-color: var(--gravity-color-primary) !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--gravity-color-primary-darker) !important;
+  border-color: var(--gravity-color-primary-darker) !important;
+}
+
+/* ============================================================
+   Cards & Panels — Gravity elevation and radius
+   ============================================================ */
+.panel,
+.modal-content {
+  border-radius: var(--gravity-radius-large);
+  box-shadow: var(--gravity-elevation-1);
+  border-color: var(--gravity-color-glass-dark-10);
+}
+
+.modal-content {
+  border: 1px solid var(--gravity-color-glass-dark-10);
+}
+
+/* ============================================================
+   Form Controls
+   ============================================================ */
+.form-control,
+.Select-control {
+  border-radius: var(--gravity-radius-small);
+  border-color: var(--gravity-color-glass-dark-20);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-control:focus {
+  border-color: var(--gravity-color-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 15%, transparent);
+}
+
+/* ============================================================
+   Links
+   ============================================================ */
+a {
+  color: var(--gravity-color-primary);
+  transition: color 0.15s ease;
+}
+
+a:hover,
+a:focus {
+  color: var(--gravity-color-primary-darker);
+}
+
+/* ============================================================
+   Loading Placeholder Override (splash screen)
+   ============================================================ */
+.loading-placeholder {
+  background-color: var(--gravity-color-surface-dark) !important;
+  color: var(--gravity-color-text-light) !important;
+}
+
+/* Make the Spinnaker logo visible against the dark Gravity background */
+.loading-placeholder > svg {
+  opacity: 0.85 !important;
+  filter: brightness(1.8) saturate(0.5) !important;
+}
+.loading-placeholder h1,
+.loading-placeholder h2 {
+  font-family: var(--gravity-font-family-title) !important;
+  color: var(--gravity-color-text-light) !important;
+  font-weight: 500 !important;
+}
+
+.loading-placeholder .bar,
+.loading-placeholder div.bar,
+div.loading-placeholder div.bar {
+  background-color: var(--gravity-color-primary) !important;
+  border-radius: var(--gravity-radius-small) !important;
+  min-height: 6px !important;
+}
+
+/* ============================================================
+   Search Header / Infrastructure Section — old teal override
+   ============================================================ */
+.infrastructure-section.search-header,
+.search-header,
+div.infrastructure-section.search-header {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+  background: var(--gravity-color-surface-light-darker) !important;
+}
+
+/* Sidebar / Vertical Navigation — use subtle surface instead of heavy blue */
+.vertical-navigation {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+}
+
+/* Sidebar nav items — use dark text instead of blue for readability */
+.vertical-navigation a,
+.vertical-navigation .nav-category {
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* Active sidebar nav item — subtle primary highlight with left accent border */
+.vertical-navigation a.active,
+.vertical-navigation .active,
+.nav-category.active {
+  background-color: var(--gravity-color-surface-primary-lighter) !important;
+  border-left: 3px solid var(--gravity-color-primary) !important;
+  color: var(--gravity-color-primary) !important;
+}
+
+/* Execution group headers — use lighter surface */
+.execution-group-actions,
+.shadowed {
+  background-color: var(--gravity-color-surface-light-lighter) !important;
+}
+
+/* Stage details / info tables — subtle background */
+.stage-details,
+.permalinks-content {
+  background-color: var(--gravity-color-surface-light) !important;
+}
+
+/* Pipeline execution bars — softer colors for large filled areas
+   Per Gravity guidelines: full accent colors are for text/small indicators,
+   light variants are for background areas */
+.execution-marker.execution-marker-succeeded,
+.stage-progress .bar.bar-success,
+.progress-bar-success {
+  background-color: #4CAF6E !important; /* Softened green: between accent-positive and its light variant */
+}
+
+.execution-marker.execution-marker-failed,
+.execution-marker.execution-marker-terminal,
+.stage-progress .bar.bar-danger,
+.progress-bar-danger {
+  background-color: #E8476B !important; /* Softened red: between accent-negative and its light variant */
+}
+
+/* Table rows with info highlighting — very subtle */
+.table > tbody > tr.info > td {
+  background-color: var(--gravity-color-surface-primary-lighter) !important;
+}
+
+/* Override any remaining hardcoded Spinnaker teal backgrounds */
+[style*="background-color: rgb(215, 232, 237)"],
+[style*="background-color:#D7E8ED"],
+[style*="background: rgb(215, 232, 237)"] {
+  background-color: var(--gravity-color-surface-primary-lighter) !important;
+}
+
+/* ============================================================
+   Scrollbar Styling
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 8px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gravity-color-glass-dark-20);
+  border-radius: var(--gravity-radius-full, 9999px);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gravity-color-glass-dark-60);
+}
