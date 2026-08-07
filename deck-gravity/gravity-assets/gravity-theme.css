@@ -197,10 +197,7 @@ html,
 .navbar-inverse span,
 .navbar-inverse button,
 .navbar-inverse input,
-.navbar-inverse .navbar-brand,
-.select2-container .select2-choices .select2-search-field input,
-.select2-container .select2-choice,
-.select2-container .select2-choices {
+.navbar-inverse .navbar-brand {
   font-family: var(--gravity-font-family-text) !important;
 }
 
@@ -1059,9 +1056,10 @@ div.infrastructure-section.search-header {
    ============================================================ */
 .execution-groups-header,
 .execution-group-actions-container {
-  background: var(--gravity-color-surface-light-lighter) !important;
-  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
-  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  background: transparent !important;
+  border-bottom: none !important;
+  padding-top: var(--gravity-spacing-x-tight) !important;
+  padding-bottom: var(--gravity-spacing-x-tight) !important;
   font-family: var(--gravity-font-family-text) !important;
   font-size: 13px !important;
   height: auto !important;
@@ -1099,4 +1097,979 @@ div.infrastructure-section.search-header {
 .execution-groups-header input[type="checkbox"],
 .execution-group-actions-container input[type="checkbox"] {
   accent-color: var(--gravity-color-primary) !important;
+}
+
+/* ============================================================
+   [FIX 1] Header Vertical Alignment
+   Deck's .spinnaker-header uses min-height:40px and inner elements
+   are 40px tall, but the themed navbar is 50px. Align inner row
+   to match the 50px height so brand/menu don't sit too high.
+   ============================================================ */
+.spinnaker-header {
+  min-height: 50px !important;
+}
+
+.spinnaker-header .navbar-header {
+  height: 50px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.spinnaker-header .navbar-header .navbar-menu-icon {
+  height: 50px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.spinnaker-header .navbar-brand,
+.navbar-inverse .navbar-brand {
+  height: 50px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  line-height: 50px !important;
+}
+
+.spinnaker-header .nav-layout {
+  height: 50px !important;
+  align-items: center !important;
+}
+
+.spinnaker-header .nav-items {
+  height: 50px !important;
+}
+
+.spinnaker-header .nav-items > li > a {
+  height: 50px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* ============================================================
+   [FIX 2] Pipeline Toggle Chevron — Remove Mismatched White Tile
+   .pipeline-toggle retains Deck's --color-alabaster background
+   while its parent sticky header is grey. Make it transparent,
+   stretch to full header height, and centre only the icon.
+   ============================================================ */
+.execution-group-heading .pipeline-toggle {
+  background-color: transparent !important;
+  height: 100% !important;
+  min-height: 37px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 var(--gravity-spacing-x-tight) !important;
+  border: none !important;
+}
+
+.execution-group-heading .pipeline-toggle .glyphicon {
+  font-size: 12px !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  line-height: 1 !important;
+}
+
+/* ============================================================
+   [FIX 3] Creation Form Validation — Softened Error Presentation
+   Deck's SpinFormik marks all fields as "touched" on mount, so
+   validation errors display immediately. Since Angular is removed,
+   ng-* classes no longer exist. Instead, soften the validation
+   message styling so it doesn't scream at users on form open.
+   Make error messages less prominent until user actually interacts.
+   ============================================================ */
+
+/* Soften the ValidationMessage component appearance in modals */
+.modal .ValidationMessage.errorMessage,
+.modal-body .ValidationMessage.errorMessage {
+  background-color: transparent !important;
+  color: var(--gravity-color-accent-negative) !important;
+  min-height: auto !important;
+  font-size: 12px !important;
+  padding: var(--gravity-spacing-xx-tight) 0 !important;
+  margin-bottom: 0 !important;
+  border-left: 2px solid var(--gravity-color-accent-negative) !important;
+  padding-left: var(--gravity-spacing-x-tight) !important;
+  border-radius: 0 !important;
+}
+
+.modal .ValidationMessage.errorMessage i,
+.modal-body .ValidationMessage.errorMessage i {
+  flex: 0 0 auto !important;
+  height: auto !important;
+  font-size: 14px !important;
+  padding: 0 var(--gravity-spacing-xx-tight) !important;
+}
+
+/* Hide error-class red borders on inputs that haven't been focused yet.
+   Once user focuses + blurs a field, the :user-invalid pseudo-class
+   (supported in modern browsers) can be used. As fallback, soften
+   the default border treatment for all form-controls in fresh modals. */
+.modal .form-control,
+.modal-body .form-control {
+  border-color: var(--gravity-color-glass-dark-20) !important;
+}
+
+.modal .form-control:focus,
+.modal-body .form-control:focus {
+  border-color: var(--gravity-color-focus) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 15%, transparent) !important;
+}
+
+/* After user interacts and input is invalid, show red border */
+.modal .form-control:user-invalid,
+.modal-body .form-control:user-invalid {
+  border-color: var(--gravity-color-accent-negative) !important;
+}
+
+/* ============================================================
+   [FIX 4] Sidebar Focus Treatment — Unified focus-visible
+   Remove the warm-orange browser default outline that conflicts
+   with the blue active indicator. Define one clear Gravity-aligned
+   focus-visible treatment across all interactive sidebar items.
+   ============================================================ */
+.vertical-navigation a:focus,
+.vertical-navigation a:focus-visible,
+.vertical-navigation .nav-category:focus,
+.vertical-navigation .nav-category:focus-visible,
+.filter-section a:focus-visible,
+.execution-filters a:focus-visible,
+.all-filters a:focus-visible {
+  outline: none !important;
+  box-shadow: inset 0 0 0 2px
+    color-mix(in srgb, var(--gravity-color-primary) 40%, transparent) !important;
+  border-radius: var(--gravity-radius-small) !important;
+}
+
+/* Remove any orange/warm outline globally on sidebar elements */
+.vertical-navigation *:focus {
+  outline-color: var(--gravity-color-primary) !important;
+}
+
+/* Active item should not show focus ring on click (only keyboard) */
+.vertical-navigation a.active:focus:not(:focus-visible),
+.vertical-navigation .active:focus:not(:focus-visible) {
+  box-shadow: none !important;
+}
+
+/* ============================================================
+   [FIX 5] Standard Data-Table Treatment
+   Application/project tables, sortable column headers, empty
+   tables, and pagination retain legacy Bootstrap styling.
+   Covers .table, header cells, row hover/selection, empty state,
+   and pagination as a unified system.
+   ============================================================ */
+
+/* Base table */
+.table,
+table.table,
+.table-responsive > .table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-radius: var(--gravity-radius-large) !important;
+  overflow: hidden !important;
+}
+
+/* Table header cells */
+.table > thead > tr > th,
+.table-responsive > .table > thead > tr > th {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 500 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  background: var(--gravity-color-surface-light) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  border-bottom: 2px solid var(--gravity-color-glass-dark-10) !important;
+  border-top: none !important;
+  white-space: nowrap !important;
+}
+
+/* Sortable column header indicator */
+.table > thead > tr > th.sortable,
+.table > thead > tr > th[ng-click],
+.table > thead > tr > th .sort-toggle {
+  cursor: pointer !important;
+}
+
+.table > thead > tr > th.sortable:hover,
+.table > thead > tr > th[ng-click]:hover {
+  background: var(--gravity-color-surface-light-darker) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* Table body rows */
+.table > tbody > tr > td,
+.table-responsive > .table > tbody > tr > td {
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  border-top: 1px solid var(--gravity-color-glass-dark-5) !important;
+  color: var(--gravity-color-text-dark) !important;
+  vertical-align: middle !important;
+}
+
+/* Row hover */
+.table > tbody > tr:hover > td,
+.table-hover > tbody > tr:hover > td,
+.table-responsive > .table > tbody > tr:hover > td {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+}
+
+/* Row selection (active/selected row) */
+.table > tbody > tr.active > td,
+.table > tbody > tr.selected > td,
+.table > tbody > tr.info > td {
+  background-color: var(--gravity-color-surface-primary-lighter) !important;
+}
+
+/* Striped rows (if used) — very subtle alternation */
+.table-striped > tbody > tr:nth-of-type(odd) > td {
+  background-color: var(--gravity-color-glass-dark-5) !important;
+}
+
+/* Empty table state */
+.table > tbody > tr.no-data > td,
+.table > tbody > tr > td.no-data,
+.table .empty-state,
+.no-data-message {
+  text-align: center !important;
+  color: var(--gravity-color-text-dark-muted) !important;
+  font-style: italic !important;
+  padding: var(--gravity-spacing-x-loose) var(--gravity-spacing-normal) !important;
+}
+
+/* Pagination */
+.pagination {
+  display: flex !important;
+  gap: var(--gravity-spacing-xx-tight) !important;
+  align-items: center !important;
+  margin: var(--gravity-spacing-normal) 0 !important;
+}
+
+.pagination > li > a,
+.pagination > li > span {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  color: var(--gravity-color-text-dark) !important;
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-radius: var(--gravity-radius-small) !important;
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.pagination > li > a:hover,
+.pagination > li > a:focus {
+  background: var(--gravity-color-surface-light-darker) !important;
+  border-color: var(--gravity-color-glass-dark-20) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+.pagination > .active > a,
+.pagination > .active > span {
+  background: var(--gravity-color-primary) !important;
+  border-color: var(--gravity-color-primary) !important;
+  color: var(--gravity-color-text-light) !important;
+}
+
+.pagination > .disabled > a,
+.pagination > .disabled > span {
+  color: var(--gravity-color-text-dark-muted) !important;
+  background: var(--gravity-color-surface-light) !important;
+  border-color: var(--gravity-color-glass-dark-5) !important;
+  cursor: not-allowed !important;
+}
+
+/* ============================================================
+   [FIX 6] Menu / Dropdown Patterns — Unified Treatment
+   Account, Help, pipeline Configure menus still use stock
+   Bootstrap styling. One shared rule set for dropdown surface,
+   item padding, hover, focus, radius, border, and elevation.
+   ============================================================ */
+
+/* Dropdown container (menu surface) */
+.dropdown-menu,
+.open > .dropdown-menu,
+.navbar-inverse .dropdown-menu,
+.popover-content .dropdown-menu {
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-radius: var(--gravity-radius-large) !important;
+  box-shadow: var(--gravity-elevation-2) !important;
+  padding: var(--gravity-spacing-xx-tight) 0 !important;
+  margin-top: var(--gravity-spacing-xx-tight) !important;
+  min-width: 180px !important;
+  overflow: hidden !important;
+}
+
+/* Dropdown items */
+.dropdown-menu > li > a,
+.dropdown-menu .dropdown-item {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--gravity-color-text-dark) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  border-radius: 0 !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  display: block !important;
+  text-decoration: none !important;
+}
+
+/* Dropdown item hover/focus */
+.dropdown-menu > li > a:hover,
+.dropdown-menu > li > a:focus,
+.dropdown-menu .dropdown-item:hover,
+.dropdown-menu .dropdown-item:focus {
+  background: var(--gravity-color-surface-light-darker) !important;
+  color: var(--gravity-color-text-dark) !important;
+  outline: none !important;
+}
+
+/* Dropdown item active/selected */
+.dropdown-menu > li.active > a,
+.dropdown-menu > li > a.active,
+.dropdown-menu > .active > a,
+.dropdown-menu .dropdown-item.active {
+  background: var(--gravity-color-surface-primary-lighter) !important;
+  color: var(--gravity-color-primary) !important;
+  font-weight: 500 !important;
+}
+
+/* Dropdown divider */
+.dropdown-menu .divider,
+.dropdown-menu > li.divider {
+  background-color: var(--gravity-color-glass-dark-10) !important;
+  margin: var(--gravity-spacing-xx-tight) 0 !important;
+  height: 1px !important;
+  border: none !important;
+}
+
+/* Dropdown header (section title) */
+.dropdown-menu .dropdown-header {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  color: var(--gravity-color-text-dark-muted) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+}
+
+/* Navbar dropdown text color fix (was inheriting white from navbar) */
+.navbar-inverse .dropdown-menu > li > a {
+  color: var(--gravity-color-text-dark) !important;
+}
+
+.navbar-inverse .dropdown-menu > li > a:hover,
+.navbar-inverse .dropdown-menu > li > a:focus {
+  background: var(--gravity-color-surface-light-darker) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* ============================================================
+   [FIX 7] Unified Button Variants
+   Primary looks good but secondary, destructive, split/dropdown,
+   disabled, icon-only, and "add" buttons vary. Define all
+   variants once with consistent radius, padding, and hierarchy.
+   ============================================================ */
+
+/* Shared button base (extends existing .btn rule) */
+.btn {
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: var(--gravity-spacing-xx-tight) !important;
+  vertical-align: middle !important;
+}
+
+/* Secondary / Default button */
+.btn-default,
+.btn-secondary {
+  background-color: var(--gravity-color-surface-light-lighter) !important;
+  border: 1px solid var(--gravity-color-glass-dark-20) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+.btn-default:hover,
+.btn-default:focus,
+.btn-secondary:hover,
+.btn-secondary:focus {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+  border-color: var(--gravity-color-glass-dark-20) !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* Destructive / Danger button */
+.btn-danger {
+  background-color: var(--gravity-color-accent-negative) !important;
+  border-color: var(--gravity-color-accent-negative) !important;
+  color: var(--gravity-color-text-light) !important;
+}
+
+.btn-danger:hover,
+.btn-danger:focus {
+  background-color: #c00838 !important;
+  border-color: #c00838 !important;
+  color: var(--gravity-color-text-light) !important;
+}
+
+/* Link-style button (tertiary) */
+.btn-link {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--gravity-color-primary) !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-x-tight) !important;
+  box-shadow: none !important;
+}
+
+.btn-link:hover,
+.btn-link:focus {
+  color: var(--gravity-color-primary-darker) !important;
+  background: var(--gravity-color-glass-dark-5) !important;
+  text-decoration: none !important;
+}
+
+/* Disabled buttons */
+.btn.disabled,
+.btn[disabled],
+.btn-default.disabled,
+.btn-primary.disabled,
+.btn-danger.disabled,
+.btn-default[disabled],
+.btn-primary[disabled],
+.btn-danger[disabled] {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  box-shadow: none !important;
+}
+
+/* Split / dropdown toggle button */
+.btn-group > .btn + .dropdown-toggle,
+.btn-group > .btn + .btn {
+  border-radius: 0 var(--gravity-radius-large) var(--gravity-radius-large) 0 !important;
+  border-left: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding-left: var(--gravity-spacing-x-tight) !important;
+  padding-right: var(--gravity-spacing-x-tight) !important;
+}
+
+.btn-group > .btn:first-child:not(:last-child) {
+  border-radius: var(--gravity-radius-large) 0 0 var(--gravity-radius-large) !important;
+}
+
+.btn-group > .btn:only-child {
+  border-radius: var(--gravity-radius-large) !important;
+}
+
+/* Icon-only button (small square) */
+.btn-icon,
+.btn-xs,
+.btn-sm .glyphicon,
+.btn .glyphicon:only-child,
+.btn .fa:only-child {
+  font-size: 14px !important;
+}
+
+.btn-xs,
+.btn-icon {
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
+  min-width: 32px !important;
+  justify-content: center !important;
+}
+
+/* "Add" / create buttons (typically + icon with text) */
+.add-new,
+[class*="add-"] .btn,
+.btn.add-new {
+  border-style: dashed !important;
+  border-color: var(--gravity-color-glass-dark-20) !important;
+  background: transparent !important;
+  color: var(--gravity-color-primary) !important;
+}
+
+.add-new:hover,
+[class*="add-"] .btn:hover,
+.btn.add-new:hover {
+  border-color: var(--gravity-color-primary) !important;
+  background: var(--gravity-color-surface-primary-lighter) !important;
+}
+
+/* Success button */
+.btn-success {
+  background-color: var(--gravity-color-accent-positive) !important;
+  border-color: var(--gravity-color-accent-positive) !important;
+  color: var(--gravity-color-text-light) !important;
+}
+
+.btn-success:hover,
+.btn-success:focus {
+  background-color: #128540 !important;
+  border-color: #128540 !important;
+}
+
+/* ============================================================
+   [FIX 8] Dialog System — Unified Modal Treatment
+   Application and project dialogs have different navigation,
+   validation, and action footers. Create common CSS patterns
+   for modal header/body/footer, multi-step nav, required fields,
+   validation messages, tables, and footer actions.
+   ============================================================ */
+
+/* Modal overlay */
+.modal-backdrop {
+  background: var(--gravity-color-surface-dark) !important;
+  opacity: 0.5 !important;
+}
+
+/* Modal dialog container */
+.modal-dialog {
+  margin: var(--gravity-spacing-x-loose) auto !important;
+}
+
+/* Modal content (already has radius/shadow from existing rules) */
+.modal-content {
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border: none !important;
+  border-radius: var(--gravity-radius-large) !important;
+  box-shadow: var(--gravity-elevation-2) !important;
+  overflow: hidden !important;
+}
+
+/* Modal header */
+.modal-header {
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding: var(--gravity-spacing-normal) var(--gravity-spacing-loose) !important;
+  display: flex !important;
+  align-items: center !important;
+  min-height: 56px !important;
+}
+
+.modal-header .modal-title,
+.modal-header h4,
+.modal-header h3 {
+  font-family: var(--gravity-font-family-title) !important;
+  font-weight: 500 !important;
+  font-size: 18px !important;
+  color: var(--gravity-color-text-dark) !important;
+  margin: 0 !important;
+  flex: 1 !important;
+}
+
+.modal-header .close,
+.modal-header button.close {
+  color: var(--gravity-color-text-dark-subtle) !important;
+  opacity: 0.6 !important;
+  font-size: 22px !important;
+  padding: var(--gravity-spacing-x-tight) !important;
+  margin: 0 !important;
+  order: 2 !important;
+  line-height: 1 !important;
+}
+
+.modal-header .close:hover {
+  opacity: 1 !important;
+  color: var(--gravity-color-text-dark) !important;
+}
+
+/* Modal body */
+.modal-body {
+  padding: var(--gravity-spacing-loose) !important;
+  color: var(--gravity-color-text-dark) !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 14px !important;
+  max-height: 70vh !important;
+  overflow-y: auto !important;
+}
+
+/* Modal footer (action buttons) */
+.modal-footer {
+  background: var(--gravity-color-surface-light) !important;
+  border-top: 1px solid var(--gravity-color-glass-dark-10) !important;
+  padding: var(--gravity-spacing-tight) var(--gravity-spacing-loose) !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: var(--gravity-spacing-x-tight) !important;
+  align-items: center !important;
+}
+
+/* Multi-step navigation inside dialogs (wizard-style tabs) */
+.modal-body .nav-tabs,
+.modal .wizard-navigation,
+.modal .steps,
+.modal-body .steps-indicator {
+  border-bottom: 1px solid var(--gravity-color-glass-dark-10) !important;
+  margin-bottom: var(--gravity-spacing-normal) !important;
+  padding: 0 !important;
+  display: flex !important;
+  gap: 0 !important;
+}
+
+.modal-body .nav-tabs > li > a,
+.modal .wizard-navigation a,
+.modal .steps a {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
+  background: transparent !important;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.modal-body .nav-tabs > li > a:hover,
+.modal .wizard-navigation a:hover,
+.modal .steps a:hover {
+  color: var(--gravity-color-text-dark) !important;
+  border-bottom-color: var(--gravity-color-glass-dark-10) !important;
+}
+
+.modal-body .nav-tabs > li.active > a,
+.modal .wizard-navigation a.active,
+.modal .wizard-navigation .current a,
+.modal .steps .active a {
+  font-weight: 500 !important;
+  color: var(--gravity-color-primary) !important;
+  border-bottom-color: var(--gravity-color-primary) !important;
+  background: transparent !important;
+}
+
+/* Required field indicator in modals */
+.modal-body .form-group label .required,
+.modal-body label .field-required,
+.modal-body .required-indicator {
+  color: var(--gravity-color-accent-negative) !important;
+  font-weight: 700 !important;
+}
+
+/* Validation messages in modals (shown only after interaction — see Fix 3) */
+.modal-body .error-message,
+.modal-body .help-block.error-message,
+.modal-body .validation-error {
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 12px !important;
+  color: var(--gravity-color-accent-negative) !important;
+  margin-top: var(--gravity-spacing-xx-tight) !important;
+  padding: 0 !important;
+}
+
+/* Tables inside modals */
+.modal-body .table {
+  margin-bottom: var(--gravity-spacing-normal) !important;
+  border-radius: var(--gravity-radius-medium) !important;
+}
+
+/* Modal form sections / groups */
+.modal-body .form-group {
+  margin-bottom: var(--gravity-spacing-normal) !important;
+}
+
+.modal-body .form-group label,
+.modal-body .control-label {
+  font-family: var(--gravity-font-family-text) !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  color: var(--gravity-color-text-dark) !important;
+  margin-bottom: var(--gravity-spacing-xx-tight) !important;
+}
+
+/* ============================================================
+   [FIX 9] Toast / Alert Notifications — Consistent Treatment
+   The persistent "application has not been configured" toast is
+   visually disconnected. Align callout/toast spacing, close
+   affordance, elevation, semantic colour, and text hierarchy.
+   ============================================================ */
+
+/* Toast / notification container (persistent banners) */
+.alert.alert-dismissable,
+.alert.alert-dismissible,
+.toast-message,
+.notification-message {
+  position: relative !important;
+  padding: var(--gravity-spacing-tight) var(--gravity-spacing-normal) !important;
+  padding-right: var(--gravity-spacing-x-loose) !important;
+  margin-bottom: var(--gravity-spacing-normal) !important;
+  border-radius: var(--gravity-radius-large) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  border-left: 4px solid var(--gravity-color-primary) !important;
+  background: var(--gravity-color-surface-primary-lighter) !important;
+  box-shadow: var(--gravity-elevation-1) !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  color: var(--gravity-color-text-dark) !important;
+  line-height: 1.5 !important;
+}
+
+/* Semantic variants for toasts */
+.alert.alert-dismissable.alert-warning,
+.alert.alert-dismissible.alert-warning,
+.toast-message.warning {
+  border-left-color: var(--gravity-color-accent-informative) !important;
+  background: var(--gravity-color-accent-informative-light) !important;
+}
+
+.alert.alert-dismissable.alert-danger,
+.alert.alert-dismissible.alert-danger,
+.toast-message.error {
+  border-left-color: var(--gravity-color-accent-negative) !important;
+  background: var(--gravity-color-accent-negative-light) !important;
+}
+
+.alert.alert-dismissable.alert-success,
+.alert.alert-dismissible.alert-success,
+.toast-message.success {
+  border-left-color: var(--gravity-color-accent-positive) !important;
+  background: var(--gravity-color-accent-positive-light) !important;
+}
+
+/* Toast close button — accessible and consistent */
+.alert.alert-dismissable .close,
+.alert.alert-dismissible .close,
+.toast-message .close,
+.notification-message .close {
+  position: absolute !important;
+  top: 50% !important;
+  right: var(--gravity-spacing-x-tight) !important;
+  transform: translateY(-50%) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+  opacity: 0.6 !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  padding: var(--gravity-spacing-xx-tight) !important;
+  border: none !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  border-radius: var(--gravity-radius-small) !important;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.alert.alert-dismissable .close:hover,
+.alert.alert-dismissible .close:hover,
+.toast-message .close:hover,
+.notification-message .close:hover {
+  opacity: 1 !important;
+  color: var(--gravity-color-text-dark) !important;
+  background: var(--gravity-color-glass-dark-5) !important;
+}
+
+/* Toast title / strong text hierarchy */
+.alert strong,
+.alert b,
+.toast-message strong,
+.notification-message strong {
+  font-weight: 500 !important;
+  color: var(--gravity-color-text-dark) !important;
+  display: block !important;
+  margin-bottom: var(--gravity-spacing-xx-tight) !important;
+}
+
+/* Toast link styling */
+.alert.alert-dismissable a,
+.alert.alert-dismissible a,
+.toast-message a {
+  color: var(--gravity-color-primary) !important;
+  font-weight: 500 !important;
+  text-decoration: underline !important;
+}
+
+/* ============================================================
+   Navbar Right-Side Fixes
+   1. Search input in navbar — add rounded corners
+   2. Help menu doubled — fix responsive visibility classes
+   3. User menu & help toggle — rounded corners + consistent look
+   ============================================================ */
+
+/* Search input in navbar — rounded corners */
+.global-search form input[type='search'],
+.global-search form input[type='text'],
+.global-search form .form-control,
+.spinnaker-header input[type='search'],
+.navbar-inverse input[type='search'],
+.navbar-inverse input[type='text'] {
+  border-radius: var(--gravity-radius-large) !important;
+  border: 1px solid var(--gravity-color-glass-dark-20) !important;
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-tight) !important;
+  font-size: 13px !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: var(--gravity-color-text-light) !important;
+  height: 32px !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.global-search form input[type='search']:focus,
+.global-search form input[type='text']:focus,
+.navbar-inverse input[type='search']:focus,
+.navbar-inverse input[type='text']:focus {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border-color: var(--gravity-color-primary-lighter) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--gravity-color-primary) 25%, transparent) !important;
+}
+
+.global-search form input::placeholder,
+.navbar-inverse input::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Help menu duplicate fix — ensure responsive visibility works.
+   The HelpMenu renders two Dropdowns: one icon-only for small
+   screens (.hidden-lg) and one with text for large (.hidden-xs
+   .hidden-sm .hidden-md). Bootstrap responsive classes may be
+   overridden by our display:inline-flex on .btn. Fix that. */
+.help-menu .dropdown .hidden-lg,
+.help-menu .hidden-lg.dropdown-toggle {
+  display: none !important;
+}
+
+@media (max-width: 1199px) {
+  .help-menu .dropdown .hidden-lg,
+  .help-menu .hidden-lg.dropdown-toggle {
+    display: inline-flex !important;
+  }
+  .help-menu .dropdown .hidden-xs.hidden-sm.hidden-md,
+  .help-menu .hidden-xs.hidden-sm.hidden-md.dropdown-toggle {
+    display: none !important;
+  }
+}
+
+/* On large screens (≥1200px), show text variant, hide icon-only.
+   The first dropdown has .hidden-lg toggle → hide entire dropdown.
+   The second dropdown has .hidden-xs.hidden-sm.hidden-md toggle → show. */
+@media (min-width: 1200px) {
+  .help-menu #help-menu-dropdown {
+    display: none !important;
+  }
+  .help-menu #help-menu-dropdown-large {
+    display: inline-block !important;
+  }
+}
+
+@media (max-width: 1199px) {
+  .help-menu #help-menu-dropdown {
+    display: inline-block !important;
+  }
+  .help-menu #help-menu-dropdown-large {
+    display: none !important;
+  }
+}
+
+/* User menu & Help menu dropdown toggles — rounded corners
+   and consistent appearance in the dark navbar */
+.user-menu .dropdown-toggle,
+.help-menu .dropdown-toggle,
+.spinnaker-header .nav-items .dropdown-toggle {
+  border-radius: var(--gravity-radius-large) !important;
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-tight) !important;
+  font-family: var(--gravity-font-family-text) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--gravity-color-text-light) !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  height: 34px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: var(--gravity-spacing-xx-tight) !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.user-menu .dropdown-toggle:hover,
+.user-menu .dropdown-toggle:focus,
+.help-menu .dropdown-toggle:hover,
+.help-menu .dropdown-toggle:focus,
+.spinnaker-header .nav-items .dropdown-toggle:hover,
+.spinnaker-header .nav-items .dropdown-toggle:focus {
+  background: var(--gravity-color-surface-dark-lighter) !important;
+  border-color: var(--gravity-color-glass-dark-20) !important;
+  color: var(--gravity-color-text-light) !important;
+}
+
+.user-menu .dropdown.open .dropdown-toggle,
+.help-menu .dropdown.open .dropdown-toggle {
+  background: var(--gravity-color-surface-dark-lighter) !important;
+  border-color: var(--gravity-color-glass-dark-20) !important;
+}
+
+/* Caret in dropdown toggles */
+.user-menu .dropdown-toggle .caret,
+.help-menu .dropdown-toggle .caret {
+  border-top-color: var(--gravity-color-text-light) !important;
+  margin-left: var(--gravity-spacing-xx-tight) !important;
+}
+
+/* Ensure the right-side nav items have proper spacing */
+.spinnaker-header .nav-items:last-child {
+  gap: var(--gravity-spacing-xx-tight) !important;
+  margin-right: var(--gravity-spacing-x-tight) !important;
+}
+
+/* ============================================================
+   Filter Toggle ("Show filters" / "Hide filters") — Fix Overlap
+   When filters are hidden, the .filters-toggle (position:absolute)
+   overlaps pipeline expand chevrons. The execution-groups-header
+   has z-index:20, so our button needs z-index higher than that.
+   Also position it clearly above the header content area.
+   ============================================================ */
+
+/* Keep absolute positioning, raise above execution-groups-header (z:20) */
+.filters-toggle {
+  z-index: 25 !important;
+}
+
+/* When filters are hidden, position at the very top of the content area
+   and ensure it sits in its own line above the controls bar */
+.filters-toggle .filters-hidden {
+  margin-top: 4px !important;
+  margin-left: 8px !important;
+}
+
+/* When filters are collapsed, push the execution header down to make room
+   for the "Show filters" button above it without overlap */
+.insight.filters-collapsed .execution-groups-header {
+  margin-top: 28px !important;
+  margin-left: 8px !important;
+}
+
+.filters-toggle .filters-hidden .btn {
+  border-radius: var(--gravity-radius-large) !important;
+  background: var(--gravity-color-surface-light-lighter) !important;
+  border: 1px solid var(--gravity-color-glass-dark-10) !important;
+  color: var(--gravity-color-text-dark) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
+  white-space: nowrap !important;
+  box-shadow: var(--gravity-elevation-1) !important;
+}
+
+.filters-toggle .filters-hidden .btn:hover {
+  background: var(--gravity-color-surface-light-darker) !important;
+  border-color: var(--gravity-color-glass-dark-20) !important;
+}
+
+.filters-toggle .filters-hidden .show-filter-text {
+  border-left: none !important;
+  margin-left: var(--gravity-spacing-xx-tight) !important;
+}
+
+/* When filters are open, keep the header compact */
+.filters-toggle .filters-open {
+  background-color: var(--gravity-color-surface-light) !important;
+  margin-top: 0 !important;
+  height: auto !important;
+  padding: var(--gravity-spacing-x-tight) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--gravity-color-text-dark) !important;
 }

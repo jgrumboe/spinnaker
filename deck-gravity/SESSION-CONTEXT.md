@@ -97,6 +97,8 @@ The Gravity design system MCP is configured in `~/.kiro/settings/mcp.json` under
 
 ## Dependencies & Context
 
-- Deck requires `deck-kayenta/` at `../deck-kayenta` relative to `deck/` (webpack alias)
-- Build requires: `pnpm install` → `pnpm modules` (builds workspace packages) → `pnpm build` (webpack)
+- Kayenta is now a workspace package inside `deck/packages/kayenta` (consolidated from standalone `deck-kayenta/`)
+- The Dockerfile no longer needs to COPY `deck-kayenta/` — it's built as part of `pnpm modules`
+- Angular has been fully removed from Deck (PR #7848) — no more `ng-*` CSS classes, select2, Angular directives
+- Build requires: `pnpm install` → `pnpm modules` (builds workspace packages including kayenta) → `pnpm build` (webpack)
 - Node 24 + python3 + build-essential needed in Docker for native modules (bufferutil, utf-8-validate)

@@ -25,8 +25,7 @@ RUN corepack enable && corepack prepare pnpm@11.1.1 --activate
 WORKDIR /build/deck
 COPY deck/ ./
 
-# deck-kayenta is referenced by webpack alias as ../deck-kayenta relative to deck
-COPY deck-kayenta/ /build/deck-kayenta/
+# deck-kayenta was consolidated into deck/packages/kayenta — no external copy needed
 
 # Install dependencies and build workspace packages, then the app
 RUN pnpm install --frozen-lockfile && \
