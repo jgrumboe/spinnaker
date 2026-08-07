@@ -55,7 +55,7 @@ COPY deck-gravity/gravity-assets/gravity-toggle.js /opt/deck/html/gravity-toggle
 
 # Inject the default Gravity stylesheet and the theme toggle at end of body.
 # The toggle removes the stylesheet only for an explicit Classic preference.
-RUN sed -i 's|</body>|<link id="gravity-theme-link" rel="stylesheet" href="/gravity-theme.css?v=gravity-ui-20260807-05" />\n<script src="/gravity-toggle.js?v=gravity-ui-20260807-05"></script>\n</body>|' /opt/deck/html/index.html
+RUN sed -i 's|</body>|<link id="gravity-theme-link" rel="stylesheet" href="/gravity-theme.css" />\n<script src="/gravity-toggle.js"></script>\n</body>|' /opt/deck/html/index.html
 
 RUN chown -R www-data:www-data /opt/deck
 USER www-data

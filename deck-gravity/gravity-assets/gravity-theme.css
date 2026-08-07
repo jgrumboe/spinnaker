@@ -906,7 +906,9 @@ div.infrastructure-section.search-header {
   color: var(--gravity-color-text-dark-subtle) !important;
   text-transform: uppercase !important;
   letter-spacing: 0.04em !important;
-  padding-top: var(--gravity-spacing-x-tight) !important;
+  /* Match the value line box so label and value centers align. */
+  padding-top: 0 !important;
+  line-height: 20px !important;
 }
 
 .stage-details dd,
@@ -2046,4 +2048,53 @@ table.table,
   font-size: 13px !important;
   font-weight: 500 !important;
   color: var(--gravity-color-text-dark) !important;
+}
+
+/* ============================================================
+   Healthy Cluster State — Gravity positive semantic treatment
+   Gravity guidance: use the positive accent for meaningful status
+   indicators and keep larger surfaces restrained. Deck's healthy
+   instance cells currently use the very pale success-light token,
+   which makes an up cluster look inactive.
+   ============================================================ */
+
+/* Keep every instance state geometrically consistent. Deck's base
+   instance tiles are square-cornered; Gravity applies the same small
+   radius to healthy, transitional, unhealthy, and unknown states. */
+.instances a.instance,
+.instances a.instance:hover {
+  border-radius: var(--gravity-radius-small) !important;
+}
+
+/* Healthy instance cells: clear green state while preserving the
+   compact grid and white separators between instances. */
+.instances a.instance.health-status-Up,
+.instances a.instance.health-status-Up:hover {
+  background-color: var(--gravity-color-accent-positive) !important;
+}
+
+/* Healthy cluster summary percentage/count */
+.health-counts .healthy,
+.rollup-title-cell .health-counts .healthy {
+  color: var(--gravity-color-accent-positive) !important;
+  font-weight: 500 !important;
+}
+
+/* The cluster icon already communicates the category; reinforce its
+   healthy semantic color without changing mixed/unhealthy states. */
+.row.rollup-entry:not(.unhealthy) .glyphicon-th,
+.row.rollup-entry:not(.unhealthy) .glyphicon-th-large {
+  color: var(--gravity-color-accent-positive) !important;
+}
+
+/* ============================================================
+   Task Status Filters — consistent Gravity button geometry
+   Deck's btn-group styles split the corner radius across the
+   segmented buttons. Gravity task filters use the same radius
+   on every button for a consistent control treatment.
+   ============================================================ */
+.tasks > .tasks-header .btn-group > button.btn,
+.tasks > .tasks-header .btn-group > button.btn:first-child,
+.tasks > .tasks-header .btn-group > button.btn:last-child {
+  border-radius: var(--gravity-radius-large) !important;
 }

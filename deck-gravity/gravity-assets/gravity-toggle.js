@@ -13,9 +13,7 @@
 
   var STORAGE_KEY = 'deck-gravity-enabled';
   var CSS_ID = 'gravity-theme-link';
-  // Bump this URL when deploying the CSS directly to a running pod so
-  // browsers cannot reuse a stale theme stylesheet from their cache.
-  var CSS_HREF = '/gravity-theme.css?v=gravity-ui-20260807-05';
+  var CSS_HREF = '/gravity-theme.css';
 
   // Gravity is the default. Preserve only an explicit Classic opt-out.
   function isGravityEnabled() {
