@@ -266,6 +266,29 @@ i.fa, i.fas, i.far, i.fab,
   transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Keep the compact filter-toggle button at normal weight so its width
+   matches Deck's collapsed-filter layout; use Gravity's standard radius
+   without changing its padding or positioning. */
+.filters-toggle .btn {
+  font-weight: 400 !important;
+  border-radius: var(--gravity-radius-large) !important;
+}
+
+/* Pipeline executions only: the source toggle's 11px top margin is
+   7px too high relative to the compact +/- controls after Gravity
+   button styles apply. Align their vertical centers without changing
+   the cluster toolbar. */
+.executions-section .filters-toggle .filters-hidden {
+  margin-top: 18px !important;
+}
+
+/* Reserve the compact filter button width plus a 16px gutter before the
+   pipeline's +/- controls. This avoids the visual collision caused by
+   Deck's original 84px offset when the Gravity radius is applied. */
+.insight.filters-collapsed .execution-groups-header {
+  margin-left: 100px !important;
+}
+
 .btn:focus,
 .btn:active:focus {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--gravity-color-focus) 30%, transparent);
@@ -1479,7 +1502,7 @@ table.table,
    ============================================================ */
 
 /* Shared button base (extends existing .btn rule) */
-.btn {
+.btn:not(.btn-xs) {
   padding: var(--gravity-spacing-x-tight) var(--gravity-spacing-normal) !important;
   font-size: 13px !important;
   line-height: 1.4 !important;
@@ -1570,14 +1593,11 @@ table.table,
 
 /* Icon-only button (small square) */
 .btn-icon,
-.btn-xs,
-.btn-sm .glyphicon,
 .btn .glyphicon:only-child,
 .btn .fa:only-child {
   font-size: 14px !important;
 }
 
-.btn-xs,
 .btn-icon {
   padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
   min-width: 32px !important;
@@ -2015,60 +2035,14 @@ table.table,
 }
 
 /* ============================================================
-   Filter Toggle ("Show filters" / "Hide filters") — Fix Overlap
-   When filters are hidden, the .filters-toggle (position:absolute)
-   overlaps pipeline expand chevrons. The execution-groups-header
-   has z-index:20, so our button needs z-index higher than that.
-   Also position it clearly above the header content area.
+   Filter Toggle ("Show filters" / "Hide filters")
+   Only style the open-state header. Do NOT change the hidden
+   button sizing — it must match Classic UI's compact layout
+   to avoid overlap with adjacent action buttons.
    ============================================================ */
-
-/* Keep absolute positioning, raise above execution-groups-header (z:20) */
-.filters-toggle {
-  z-index: 25 !important;
-}
-
-/* When filters are hidden, position at the very top of the content area
-   and ensure it sits in its own line above the controls bar */
-.filters-toggle .filters-hidden {
-  margin-top: 4px !important;
-  margin-left: 8px !important;
-}
-
-/* When filters are collapsed, push the execution header down to make room
-   for the "Show filters" button above it without overlap */
-.insight.filters-collapsed .execution-groups-header {
-  margin-top: 28px !important;
-  margin-left: 8px !important;
-}
-
-.filters-toggle .filters-hidden .btn {
-  border-radius: var(--gravity-radius-large) !important;
-  background: var(--gravity-color-surface-light-lighter) !important;
-  border: 1px solid var(--gravity-color-glass-dark-10) !important;
-  color: var(--gravity-color-text-dark) !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  padding: var(--gravity-spacing-xx-tight) var(--gravity-spacing-x-tight) !important;
-  white-space: nowrap !important;
-  box-shadow: var(--gravity-elevation-1) !important;
-}
-
-.filters-toggle .filters-hidden .btn:hover {
-  background: var(--gravity-color-surface-light-darker) !important;
-  border-color: var(--gravity-color-glass-dark-20) !important;
-}
-
-.filters-toggle .filters-hidden .show-filter-text {
-  border-left: none !important;
-  margin-left: var(--gravity-spacing-xx-tight) !important;
-}
-
-/* When filters are open, keep the header compact */
 .filters-toggle .filters-open {
   background-color: var(--gravity-color-surface-light) !important;
-  margin-top: 0 !important;
-  height: auto !important;
-  padding: var(--gravity-spacing-x-tight) !important;
+  font-family: var(--gravity-font-family-text) !important;
   font-size: 13px !important;
   font-weight: 500 !important;
   color: var(--gravity-color-text-dark) !important;
