@@ -148,8 +148,8 @@
   --color-danger-medium: var(--gravity-color-accent-negative-lighter) !important;
   --color-warning: var(--gravity-color-accent-informative) !important;
   --color-warning-light: var(--gravity-color-accent-informative-light) !important;
-  --color-alert: var(--gravity-color-accent-negative) !important;
-  --color-alert-light: var(--gravity-color-accent-negative-light) !important;
+  --color-alert: var(--gravity-color-accent-informative) !important;
+  --color-alert-light: var(--gravity-color-accent-informative-light) !important;
   --color-accessory: var(--gravity-color-accent-informative) !important;
   --color-accessory-light: var(--gravity-color-accent-informative-light) !important;
 
@@ -206,8 +206,22 @@ html,
 .navbar-inverse .glyphicon,
 [class*="glyphicon-"],
 i.glyphicon,
-span.glyphicon {
+span.glyphicon,
+button .glyphicon,
+.btn .glyphicon,
+.btn > .glyphicon {
   font-family: 'Glyphicons Halflings' !important;
+}
+
+/* Spinnaker custom icons use icomoon font; they combine .glyphicon with
+   icon-* classes (e.g. "icon-spinner"). Use class^= and class~= patterns
+   that only match standalone icon-* classes, NOT glyphicon-* substrings. */
+span.glyphicon[class~="icon-spinner"],
+.glyphicon[class*=" icon-"],
+.glyphicon[class^="icon-"],
+.btn .glyphicon[class*=" icon-"],
+button .glyphicon[class*=" icon-"] {
+  font-family: 'icomoon' !important;
 }
 
 .fa.fa, .fas.fas, .far.far, .fab.fab,
@@ -295,14 +309,21 @@ i.fa, i.fas, i.far, i.fab,
   outline: none;
 }
 
-.btn-primary {
+.btn-primary,
+html .btn-primary,
+.action-buttons .btn-primary {
   background-color: var(--gravity-color-primary) !important;
   border-color: var(--gravity-color-primary) !important;
 }
 
 .btn-primary:hover,
 .btn-primary:focus,
-.btn-primary:active {
+.btn-primary:active,
+html .btn-primary:hover,
+html .btn-primary:focus,
+html .btn-primary:active,
+.action-buttons .btn-primary:hover,
+.action-buttons .btn-primary:focus {
   background-color: var(--gravity-color-primary-darker) !important;
   border-color: var(--gravity-color-primary-darker) !important;
 }
@@ -442,21 +463,18 @@ div.infrastructure-section.search-header {
   background-color: transparent !important;
 }
 
-/* Pipeline execution bars — Gravity accent tokens
-   Now using proper Gravity accent colors for semantic consistency.
-   Detailed stage bar styling is in the "Pipeline Execution Stage Bars"
-   section below. These rules cover progress bars used elsewhere in the UI. */
+/* Pipeline execution bars — Gravity 40% accent tint
+   Using color-mix() at 40% accent with white for large filled areas.
+   Colored text for readability on the light background. */
 .stage-progress .bar.bar-success,
 .progress-bar-success {
-  background-color: var(--gravity-color-accent-positive) !important;
+  background-color: color-mix(in srgb, var(--gravity-color-accent-positive) 40%, white) !important;
   border-radius: var(--gravity-radius-small) !important;
 }
 
-.execution-marker.execution-marker-failed,
-.execution-marker.execution-marker-terminal,
 .stage-progress .bar.bar-danger,
 .progress-bar-danger {
-  background-color: var(--gravity-color-accent-negative) !important;
+  background-color: color-mix(in srgb, var(--gravity-color-accent-negative) 40%, white) !important;
   border-radius: var(--gravity-radius-small) !important;
 }
 
@@ -731,10 +749,8 @@ div.infrastructure-section.search-header {
 }
 
 /* ============================================================
-   Pipeline Execution Stage Bars — Foundation-Aligned Snowflake
-   Per Gravity: accent colors are for text/small indicators.
-   For larger filled areas, use the Gravity accent tokens directly
-   with appropriate border-radius for visual consistency.
+   Pipeline Execution Stage Bars — 40% Accent Tint
+   color-mix() at 40% accent with white. Colored text on bars.
    ============================================================ */
 .execution-marker {
   border-radius: var(--gravity-radius-small) !important;
@@ -746,21 +762,85 @@ div.infrastructure-section.search-header {
 }
 
 .execution-marker.execution-marker-succeeded {
-  background-color: var(--gravity-color-accent-positive) !important;
+  background-color: color-mix(in srgb, var(--gravity-color-accent-positive) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
 }
 
 .execution-marker.execution-marker-running {
-  background-color: var(--gravity-color-primary) !important;
+  background-color: color-mix(in srgb, var(--gravity-color-primary) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
 }
 
 .execution-marker.execution-marker-not_started,
 .execution-marker.execution-marker-not-started {
   background-color: var(--gravity-color-surface-light-darker) !important;
+  color: rgba(0,15,30,0.4) !important;
 }
 
 .execution-marker.execution-marker-canceled,
 .execution-marker.execution-marker-stopped {
   background-color: var(--gravity-color-text-dark-muted) !important;
+  color: white !important;
+}
+
+.execution-marker.execution-marker-failed,
+.execution-marker.execution-marker-terminal {
+  background-color: color-mix(in srgb, var(--gravity-color-accent-negative) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+.execution-marker.execution-marker-failed_continue {
+  background-color: color-mix(in srgb, var(--gravity-color-accent-informative) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+/* ============================================================
+   Execution Status Pills / Labels — Light Surface + Colored Text
+   Same visual language as the stage bars: light fill, accent text.
+   ============================================================ */
+.execution-summary .label,
+.execution-details .label,
+.stage-details .label {
+  border-radius: var(--gravity-radius-small) !important;
+  font-weight: 600 !important;
+  font-size: 10px !important;
+  letter-spacing: 0.03em !important;
+}
+
+.label.label-succeeded {
+  background-color: color-mix(in srgb, var(--gravity-color-accent-positive) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+.label.label-terminal,
+.label.label-terminated {
+  background-color: color-mix(in srgb, var(--gravity-color-accent-negative) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+.label.label-failed_continue {
+  background-color: color-mix(in srgb, var(--gravity-color-accent-informative) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+.label.label-running,
+.label.label-launched {
+  background-color: color-mix(in srgb, var(--gravity-color-primary) 40%, white) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+.label.label-stopped,
+.label.label-canceled {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+  color: var(--gravity-color-text-dark-subtle) !important;
+}
+
+.label.label-not_started,
+.label.label-buffered,
+.label.label-paused,
+.label.label-suspended {
+  background-color: var(--gravity-color-surface-light-darker) !important;
+  color: var(--gravity-color-text-dark-muted) !important;
 }
 
 /* Execution status text — semantic colors matching Gravity accents */
@@ -1532,14 +1612,20 @@ table.table,
 }
 
 /* Destructive / Danger button */
-.btn-danger {
+.btn-danger,
+html .btn-danger,
+.action-buttons .btn-danger {
   background-color: var(--gravity-color-accent-negative) !important;
   border-color: var(--gravity-color-accent-negative) !important;
   color: var(--gravity-color-text-light) !important;
 }
 
 .btn-danger:hover,
-.btn-danger:focus {
+.btn-danger:focus,
+html .btn-danger:hover,
+html .btn-danger:focus,
+.action-buttons .btn-danger:hover,
+.action-buttons .btn-danger:focus {
   background-color: #c00838 !important;
   border-color: #c00838 !important;
   color: var(--gravity-color-text-light) !important;
@@ -2051,11 +2137,9 @@ table.table,
 }
 
 /* ============================================================
-   Healthy Cluster State — Gravity positive semantic treatment
-   Gravity guidance: use the positive accent for meaningful status
-   indicators and keep larger surfaces restrained. Deck's healthy
-   instance cells currently use the very pale success-light token,
-   which makes an up cluster look inactive.
+   Healthy Cluster State — Light surface treatment
+   Consistent with pipeline bars: light fill tokens for larger
+   surfaces, full accent for text/icons.
    ============================================================ */
 
 /* Keep every instance state geometrically consistent. Deck's base
@@ -2066,11 +2150,36 @@ table.table,
   border-radius: var(--gravity-radius-small) !important;
 }
 
-/* Healthy instance cells: clear green state while preserving the
-   compact grid and white separators between instances. */
+/* Healthy instance cells — 40% positive tint */
 .instances a.instance.health-status-Up,
 .instances a.instance.health-status-Up:hover {
-  background-color: var(--gravity-color-accent-positive) !important;
+  background-color: color-mix(in srgb, var(--gravity-color-accent-positive) 40%, white) !important;
+}
+
+/* Down/Failed instance cells — 40% negative tint */
+.instances a.instance.health-status-Down,
+.instances a.instance.health-status-Down:hover,
+.instances a.instance.health-status-Failed,
+.instances a.instance.health-status-Failed:hover {
+  background-color: color-mix(in srgb, var(--gravity-color-accent-negative) 40%, white) !important;
+}
+
+/* Starting instance cells — 40% primary tint */
+.instances a.instance.health-status-Starting,
+.instances a.instance.health-status-Starting:hover {
+  background-color: color-mix(in srgb, var(--gravity-color-primary) 40%, white) !important;
+}
+
+/* Unknown instance cells — 40% primary tint */
+.instances a.instance.health-status-Unknown,
+.instances a.instance.health-status-Unknown:hover {
+  background-color: color-mix(in srgb, var(--gravity-color-primary) 40%, white) !important;
+}
+
+/* OutOfService instance cells — neutral muted surface */
+.instances a.instance.health-status-OutOfService,
+.instances a.instance.health-status-OutOfService:hover {
+  background-color: var(--gravity-color-surface-light-darker) !important;
 }
 
 /* Healthy cluster summary percentage/count */
@@ -2097,4 +2206,58 @@ table.table,
 .tasks > .tasks-header .btn-group > button.btn:first-child,
 .tasks > .tasks-header .btn-group > button.btn:last-child {
   border-radius: var(--gravity-radius-large) !important;
+}
+
+/* ============================================================
+   Task Loading Spinner — rotate in place
+   Keep this scoped to the task-view loader. Pinning the transform
+   origin and using a locally named animation prevents the Font
+   Awesome glyph from orbiting when a production stylesheet or
+   animation name collision supplies an offset.
+   ============================================================ */
+@keyframes gravity-task-spinner-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Any .spinner-container used as a flex wrapper should vertically center
+   its child so the child doesn't stretch to the container height. Without
+   this, transform-origin 50% 50% resolves to a point far from the glyph,
+   causing the spinning icon to orbit in a large circle. */
+.spinner-container {
+  align-items: center !important;
+}
+
+/* All spinning icons: constrain to intrinsic size, pin origin, and use a
+   locally-named rotation to avoid conflicts with Font Awesome's fa-spin
+   keyframes (which may load with different timing/steps). */
+.fa.fa-spin,
+.fa-spin-slow,
+.glyphicon.fa-spin-slow {
+  display: inline-block !important;
+  width: auto !important;
+  height: auto !important;
+  transform-origin: center center !important;
+}
+
+.spinner-container .fa.fa-spin,
+.spinner-container .fa-spin.fa-spinner {
+  flex: 0 0 auto !important;
+  animation: gravity-task-spinner-spin 4s steps(120) infinite !important;
+}
+
+/* ============================================================
+   Copy Icon Fix — glyphicon-copy fallback
+   The Glyphicons Halflings font bundled with Deck may not include
+   the \e205 copy glyph. Replace it with a Font Awesome equivalent
+   so the clipboard button shows a visible icon.
+   ============================================================ */
+.glyphicon.glyphicon-copy:before {
+  font-family: 'Font Awesome 5 Free' !important;
+  font-weight: 900 !important;
+  content: '\f0c5' !important;
 }
