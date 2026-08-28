@@ -61,15 +61,19 @@ import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
 import software.amazon.awssdk.core.interceptor.ExecutionInterceptor;
 import software.amazon.awssdk.services.applicationautoscaling.ApplicationAutoScalingClient;
+import software.amazon.awssdk.services.autoscaling.AutoScalingClient;
 import software.amazon.awssdk.services.cloudformation.CloudFormationClient;
 import software.amazon.awssdk.services.cloudwatch.CloudWatchClient;
+import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ecr.EcrClient;
 import software.amazon.awssdk.services.ecs.EcsClient;
+import software.amazon.awssdk.services.elasticloadbalancing.ElasticLoadBalancingClient;
 import software.amazon.awssdk.services.elasticloadbalancingv2.ElasticLoadBalancingV2Client;
 import software.amazon.awssdk.services.iam.IamClient;
 import software.amazon.awssdk.services.lambda.LambdaClient;
 import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
 import software.amazon.awssdk.services.servicediscovery.ServiceDiscoveryClient;
+import software.amazon.awssdk.services.shield.ShieldClient;
 import software.amazon.awssdk.services.sns.SnsClient;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.support.SupportClient;
@@ -652,6 +656,42 @@ public class AmazonClientProvider {
   // ---------------------------------------------------------------------------
 
   /**
+   * Returns an AWS SDK v2 {@link Ec2Client} for the given account and region.
+   *
+   * <p>No {@code skipEdda} parameter: Edda interception is v1-only (see {@link #getAmazonEcsV2}).
+   * Note that EC2 is one of the few remaining v1 services that is actually fronted by Edda in
+   * practice (via {@link #getAmazonEC2(NetflixAmazonCredentials, String, boolean)}), so callers
+   * migrating to this method should be aware they are trading Edda read-through for direct AWS API
+   * calls.
+   */
+  public Ec2Client getAmazonEC2V2(NetflixAmazonCredentials amazonCredentials, String region) {
+    return awsSdkV2ClientSupplier.getClient(
+        Ec2Client::builder,
+        Ec2Client.class,
+        amazonCredentials.getV2CredentialsProvider(),
+        region,
+        amazonCredentials.getName());
+  }
+
+  /**
+   * Returns an AWS SDK v2 {@link AutoScalingClient} for the given account and region.
+   *
+   * <p>No {@code skipEdda} parameter: Edda interception is v1-only (see {@link #getAmazonEcsV2}).
+   * Like EC2, AutoScaling is actually fronted by Edda in practice (via {@link
+   * #getAutoScaling(NetflixAmazonCredentials, String, boolean)}), so callers migrating to this
+   * method should be aware they are trading Edda read-through for direct AWS API calls.
+   */
+  public AutoScalingClient getAutoScalingV2(
+      NetflixAmazonCredentials amazonCredentials, String region) {
+    return awsSdkV2ClientSupplier.getClient(
+        AutoScalingClient::builder,
+        AutoScalingClient.class,
+        amazonCredentials.getV2CredentialsProvider(),
+        region,
+        amazonCredentials.getName());
+  }
+
+  /**
    * Returns an AWS SDK v2 {@link EcsClient} for the given account and region.
    *
    * <p>Unlike its v1 counterpart this method has no {@code skipEdda} parameter. Edda read-through
@@ -869,6 +909,36 @@ public class AmazonClientProvider {
     return awsSdkV2ClientSupplier.getClient(
         ElasticLoadBalancingV2Client::builder,
         ElasticLoadBalancingV2Client.class,
+        amazonCredentials.getV2CredentialsProvider(),
+        region,
+        amazonCredentials.getName());
+  }
+
+  /**
+   * Returns an AWS SDK v2 {@link ElasticLoadBalancingClient} for classic (non-Application/Network)
+   * Elastic Load Balancers, for the given account and region.
+   *
+   * <p>No {@code skipEdda} parameter: Edda interception is v1-only (see {@link #getAmazonEcsV2}).
+   */
+  public ElasticLoadBalancingClient getAmazonElasticLoadBalancingClassicV2(
+      NetflixAmazonCredentials amazonCredentials, String region) {
+    return awsSdkV2ClientSupplier.getClient(
+        ElasticLoadBalancingClient::builder,
+        ElasticLoadBalancingClient.class,
+        amazonCredentials.getV2CredentialsProvider(),
+        region,
+        amazonCredentials.getName());
+  }
+
+  /**
+   * Returns an AWS SDK v2 {@link ShieldClient} for the given account and region.
+   *
+   * <p>No {@code skipEdda} parameter: Edda interception is v1-only (see {@link #getAmazonEcsV2}).
+   */
+  public ShieldClient getAmazonShieldV2(NetflixAmazonCredentials amazonCredentials, String region) {
+    return awsSdkV2ClientSupplier.getClient(
+        ShieldClient::builder,
+        ShieldClient.class,
         amazonCredentials.getV2CredentialsProvider(),
         region,
         amazonCredentials.getName());
