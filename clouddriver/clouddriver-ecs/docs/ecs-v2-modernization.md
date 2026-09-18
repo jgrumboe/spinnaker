@@ -225,12 +225,60 @@ deck:
      (strategy=none) deploy in orca/deck is the follow-up that makes this safe
      to select in the UI.
    - SDK v2 upgrade.
-3. **Observability:** `WaitForEcsServiceDeploymentTask` reading the native
-   deployment resource; map states to stage status/rollback.
-4. **Blue/green + alarms:** native blue/green controller, bake time, lifecycle
-   hooks, deployment alarms; optional Kayenta hook.
+3. **Observability (done):** clouddriver gets a standalone, additive
+   `EcsNativeServiceDeploymentController` (`GET
+   /ecs-native/serverGroups/{account}/{region}/{serverGroupName}/deploymentStatus`)
+   that calls live `DescribeServices` and maps the service's `PRIMARY`
+   `Deployment` (`rolloutState`, `rolloutStateReason`, task counts) onto
+   `EcsServiceDeploymentStatus` -- not cache-backed, since a polling wait task
+   needs current state. Orca gets a matching standalone `EcsNativeService`
+   retrofit client (`DelegatingEcsNativeService`, one new `@Bean` method
+   alongside the existing `oortDeployService` in `CloudDriverConfiguration`
+   -- the only shared file touched, additive-only), `WaitForEcsNativeServiceDeploymentTask`
+   (maps `IN_PROGRESS` -> RUNNING, `COMPLETED` -> SUCCEEDED, `FAILED` -> TERMINAL,
+   which also covers a circuit-breaker rollback), and a minimal
+   `WaitForEcsNativeServiceDeploymentStage` wrapping it. The stage is
+   deliberately *not* wired into the shared deploy stage's task graph -- users
+   add it explicitly after an `ecs-native` deploy/clone stage, the same way
+   `ecs-native` itself is selected today (via pipeline JSON) until deck lands.
+   *Caveat:* built against the long-stable `Service.getDeployments()` /
+   `Deployment.rolloutState` shape (available in AWS SDK v1 for ECS circuit
+   breaker since ~2021); not compiled against the actual pinned SDK jar in this
+   sandbox (see verification note below).
+4. **Blue/green + alarms:**
+   - **Deployment alarms (done):** `EcsNativeCreateServerGroupDescription` and
+     `EcsNativeUpdateServiceDescription` gain `alarmNames` /
+     `enableDeploymentAlarms` / `deploymentAlarmsRollback`, wired into
+     `DeploymentConfiguration.alarms` (`DeploymentAlarms`) in both atomic
+     operations alongside the existing circuit-breaker config. Independent of
+     the circuit breaker: alarms roll back on a named CloudWatch alarm going
+     into `ALARM` state, not just on task health.
+   - **Native blue/green controller, bake time, lifecycle hooks: not
+     attempted.** AWS's native (non-CodeDeploy) ECS blue/green deployment
+     strategy is a very recent addition (announced re:Invent 2024) and its
+     availability in whatever AWS SDK v1 version this repo currently pins
+     (SDK v2 upgrade is still an open, separate item -- see phase 2) could not
+     be verified in this sandbox (no network access to resolve dependencies or
+     inspect the actual jar; see verification note below). Writing code
+     against a possibly-nonexistent API surface isn't worth the risk of
+     shipping something that silently doesn't compile or misrepresents what
+     AWS actually offers. Recommend doing the SDK v2 upgrade first (which is
+     far more likely to have current blue/green support), then revisiting this
+     with a working compiler/network to confirm the real request/response
+     shapes before writing the controller.
+   - Optional Kayenta hook: not attempted; depends on the above.
 5. **Deck polish:** native strategy registry entries and wizard fields for the
    new deployment configuration.
+
+**Verification note (applies to phases 2-4):** none of this has been compiled
+in this sandbox -- Gradle's dependency resolution is blocked here (plugin
+portal returns 429/rate-limited, and no dependencies are cached). Every method
+signature referenced against existing AWS SDK v1 / Spinnaker classes was cross-
+checked by hand against other call sites already in this codebase (e.g.
+`EcsServerGroupController`'s existing live `describeServices()` call, which
+already depends on the same `Service`/`Deployment` model classes). Run
+`./gradlew :clouddriver-ecs:test :orca-clouddriver:test --tests '*EcsNative*'`
+before relying on any of it.
 
 ## 7. Open questions
 

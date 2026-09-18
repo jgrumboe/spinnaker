@@ -81,6 +81,48 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     request.deploymentConfiguration.deploymentCircuitBreaker.rollback == false
   }
 
+  def 'should send deployment alarms when alarm names are configured'() {
+    given:
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> null
+    description.getAlarmNames() >> ['myapp-high-error-rate']
+    description.isDeploymentAlarmsRollback() >> true
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+
+    when:
+    CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    request.deploymentConfiguration.alarms.alarmNames == ['myapp-high-error-rate']
+    request.deploymentConfiguration.alarms.enable == true
+    request.deploymentConfiguration.alarms.rollback == true
+  }
+
+  def 'should not send deployment alarms when none are configured'() {
+    given:
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> null
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+
+    when:
+    CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    request.deploymentConfiguration.alarms == null
+  }
+
   def 'resolveExistingServiceName returns the source service when present, otherwise null'() {
     given:
     def withSource = new EcsNativeCreateServerGroupDescription(inPlaceUpdate: true)

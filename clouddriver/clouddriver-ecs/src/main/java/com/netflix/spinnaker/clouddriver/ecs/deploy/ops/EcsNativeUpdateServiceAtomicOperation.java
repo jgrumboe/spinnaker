@@ -17,6 +17,7 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
 import com.amazonaws.services.ecs.AmazonECS;
+import com.amazonaws.services.ecs.model.DeploymentAlarms;
 import com.amazonaws.services.ecs.model.DeploymentCircuitBreaker;
 import com.amazonaws.services.ecs.model.DeploymentConfiguration;
 import com.amazonaws.services.ecs.model.UpdateServiceRequest;
@@ -82,11 +83,13 @@ public class EcsNativeUpdateServiceAtomicOperation
    * bounds.
    */
   private DeploymentConfiguration buildDeploymentConfiguration() {
+    DeploymentAlarms alarms = buildDeploymentAlarms();
     boolean hasConfig =
         description.getMinimumHealthyPercent() != null
             || description.getMaximumPercent() != null
             || description.isEnableDeploymentCircuitBreaker()
-            || description.isDeploymentCircuitBreakerRollback();
+            || description.isDeploymentCircuitBreakerRollback()
+            || alarms != null;
     if (!hasConfig) {
       return null;
     }
@@ -102,6 +105,25 @@ public class EcsNativeUpdateServiceAtomicOperation
         new DeploymentCircuitBreaker()
             .withEnable(description.isEnableDeploymentCircuitBreaker())
             .withRollback(description.isDeploymentCircuitBreakerRollback()));
+    if (alarms != null) {
+      deploymentConfiguration.setAlarms(alarms);
+    }
     return deploymentConfiguration;
+  }
+
+  /**
+   * Builds a {@link DeploymentAlarms} only when the description actually names alarms or opts in,
+   * so an update that doesn't use them doesn't send an empty/disabled alarms block.
+   */
+  private DeploymentAlarms buildDeploymentAlarms() {
+    boolean hasAlarmNames =
+        description.getAlarmNames() != null && !description.getAlarmNames().isEmpty();
+    if (!hasAlarmNames && !description.isEnableDeploymentAlarms()) {
+      return null;
+    }
+    return new DeploymentAlarms()
+        .withAlarmNames(description.getAlarmNames())
+        .withEnable(true)
+        .withRollback(description.isDeploymentAlarmsRollback());
   }
 }
