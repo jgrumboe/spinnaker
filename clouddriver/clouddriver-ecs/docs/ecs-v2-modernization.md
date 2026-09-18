@@ -120,6 +120,20 @@ clouddriver (done for Phase 1):
   existing ECS descriptions/operations; native semantics diverge in later
   phases.
 - No new credentials (see 4.2).
+- **Read-path delegates (done):** clouddriver's read APIs and Orca's polling
+  calls (`ClusterController`, `OortService#getServerGroupFromCluster`,
+  `#getTargetServerGroup`, etc.) select a `ClusterProvider` /
+  `LoadBalancerProvider` bean by an *exact string match* on
+  `getCloudProviderId()` / `getCloudProvider()`. The original
+  `EcsServerClusterProvider` and `EcsLoadBalancerProvider` hardcode
+  `EcsCloudProvider.ID` ("ecs"), so without a counterpart, a deploy declaring
+  `cloudProvider: "ecs-native"` would create/update the ECS service
+  successfully and then find **zero** matching providers when Orca resolves
+  the target server group afterwards — the stage would hang or fail even
+  though ECS is healthy. `EcsNativeServerClusterProvider` and
+  `EcsNativeLoadBalancerProvider` are pure delegates (forward every method to
+  the existing bean, override only the id) that close this gap without
+  touching the original classes.
 
 orca (creator done for Phase 1):
 - `EcsNativeServerGroupCreator extends EcsServerGroupCreator`, overriding only
@@ -192,6 +206,14 @@ deck:
 
 ## 7. Open questions
 
+- Resolved: is the dash in `ecs-native` a problem anywhere (Java identifiers,
+  enum constants, Spring bean names, URL path matching, config binding)? No —
+  checked every place the id is consumed: `AnnotationsBasedAtomicOperationsRegistry`
+  and Orca's `ServerGroupCreator` dispatch both match it via plain
+  `String.equals()`, and clouddriver's `@PathVariable String cloudProvider`
+  routes have no regex constraint (dashes are valid URL path characters). It's
+  never used as a Java identifier, enum constant, or delimiter-split token, so
+  no rename is needed.
 - Account exposure is resolved: no separate accounts (name-based resolution,
   see 4.2). Open sub-question: how should deck populate the `ecs-native` stage's
   account dropdown — reuse the `ecs` account list directly, or expose the
