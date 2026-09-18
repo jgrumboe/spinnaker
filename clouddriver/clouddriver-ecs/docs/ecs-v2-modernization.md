@@ -134,6 +134,28 @@ clouddriver (done for Phase 1):
   `EcsNativeLoadBalancerProvider` are pure delegates (forward every method to
   the existing bean, override only the id) that close this gap without
   touching the original classes.
+- **Full sweep of the same bug class (done):** every `get*()`-style provider in
+  `clouddriver-ecs` was checked for the same "controller selects a bean by an
+  exact match on a hardcoded `EcsCloudProvider.ID`" pattern. Fixed with the
+  same pure-delegate approach: `EcsNativeSubnetProvider` (`SubnetController`),
+  `EcsNativeSecurityGroupProvider` (`SecurityGroupController`),
+  `EcsNativeRoleProvider` (`RoleController`), `EcsNativeInstanceProvider`
+  (`InstanceController`, optional filter). Checked and found *not* to need a
+  delegate: `EcsApplicationProvider` (`ApplicationProvider` aggregates across
+  providers, no per-id filtering), `EcsCloudMetricProvider` (doesn't actually
+  implement `CloudMetricController`'s `CloudMetricProvider` interface -- its
+  `getCloudProvider()` method is vestigial/unrelated), `EcrImageProvider` /
+  `UnvalidatedDockerImageProvider` (`ImageRepositoryProvider` has no consumer
+  in the repo that filters by cloud-provider id).
+- **Known remaining gap, not fixed (structurally different):** global search
+  (`SearchableProvider`/`EcsProvider`) scopes results by the *cache key
+  prefix* (`Keys.getCloudProvider()` = `"ecs"`), not by a swappable bean id --
+  the underlying CATS cache keys are literally written as `ecs:...`. A search
+  request filtered to `cloudProvider: "ecs-native"` would find nothing. Unlike
+  the delegates above, fixing this isn't a matter of overriding one method; it
+  would need `ecs-native`'s own `KeyParser`/cache-key scheme or a change to how
+  `supportsSearch` matches. Left for a later phase since it only affects the
+  global search bar, not deploy execution.
 
 orca (creator done for Phase 1):
 - `EcsNativeServerGroupCreator extends EcsServerGroupCreator`, overriding only
