@@ -95,37 +95,4 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         req.deploymentConfiguration == null
     } as UpdateServiceRequest) >> new UpdateServiceResult().withService(new Service().withServiceName(serviceName))
   }
-
-  void 'should send deployment alarms when alarm names are configured'() {
-    given:
-    def serviceName = 'myapp-kcats-liated-v007'
-    def credentials = TestCredential.named('test', [:])
-
-    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
-      credentials: credentials,
-      region: 'us-west-1',
-      serverGroupName: serviceName,
-      taskDefinition: 'task-def-arn',
-      alarmNames: ['myapp-high-error-rate'],
-      deploymentAlarmsRollback: true
-    ))
-
-    operation.amazonClientProvider = amazonClientProvider
-    operation.credentialsRepository = credentialsRepository
-    operation.containerInformationService = containerInformationService
-
-    amazonClientProvider.getAmazonEcs(_, _, _) >> ecs
-    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
-    credentialsRepository.getOne(_) >> credentials
-
-    when:
-    operation.operate([])
-
-    then:
-    1 * ecs.updateService({ UpdateServiceRequest req ->
-      req.deploymentConfiguration.alarms.alarmNames == ['myapp-high-error-rate'] &&
-        req.deploymentConfiguration.alarms.enable == true &&
-        req.deploymentConfiguration.alarms.rollback == true
-    } as UpdateServiceRequest) >> new UpdateServiceResult().withService(new Service().withServiceName(serviceName))
-  }
 }

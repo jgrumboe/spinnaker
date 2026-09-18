@@ -225,8 +225,8 @@ deck:
      (strategy=none) deploy in orca/deck is the follow-up that makes this safe
      to select in the UI.
    - SDK v2 upgrade.
-3. **Observability (done):** clouddriver gets a standalone, additive
-   `EcsNativeServiceDeploymentController` (`GET
+3. **Observability (done, compiler-verified):** clouddriver gets a standalone,
+   additive `EcsNativeServiceDeploymentController` (`GET
    /ecs-native/serverGroups/{account}/{region}/{serverGroupName}/deploymentStatus`)
    that calls live `DescribeServices` and maps the service's `PRIMARY`
    `Deployment` (`rolloutState`, `rolloutStateReason`, task counts) onto
@@ -241,44 +241,52 @@ deck:
    deliberately *not* wired into the shared deploy stage's task graph -- users
    add it explicitly after an `ecs-native` deploy/clone stage, the same way
    `ecs-native` itself is selected today (via pipeline JSON) until deck lands.
-   *Caveat:* built against the long-stable `Service.getDeployments()` /
-   `Deployment.rolloutState` shape (available in AWS SDK v1 for ECS circuit
-   breaker since ~2021); not compiled against the actual pinned SDK jar in this
-   sandbox (see verification note below).
+   Once network access allowed a real `:clouddriver:clouddriver-ecs:compileJava`
+   run against the actual pinned `aws-java-sdk-ecs:1.12.261` jar, `Deployment`'s
+   fields (`rolloutState`, `rolloutStateReason`, `desiredCount`, `runningCount`,
+   `pendingCount`, `failedTasks`, `createdAt`, `updatedAt` -- no `clusterArn`,
+   confirming the earlier design choice to source that from the cached service
+   instead) matched exactly what this phase assumed. Compiled clean.
 4. **Blue/green + alarms:**
-   - **Deployment alarms (done):** `EcsNativeCreateServerGroupDescription` and
-     `EcsNativeUpdateServiceDescription` gain `alarmNames` /
-     `enableDeploymentAlarms` / `deploymentAlarmsRollback`, wired into
-     `DeploymentConfiguration.alarms` (`DeploymentAlarms`) in both atomic
-     operations alongside the existing circuit-breaker config. Independent of
-     the circuit breaker: alarms roll back on a named CloudWatch alarm going
-     into `ALARM` state, not just on task health.
+   - **Deployment alarms: attempted, then reverted -- unsupported by the pinned
+     SDK.** The first pass added `alarmNames`/`enableDeploymentAlarms`/
+     `deploymentAlarmsRollback` and wired a `DeploymentAlarms` onto
+     `DeploymentConfiguration.alarms`, on the assumption (stated in an earlier
+     draft of this doc) that alarms were "long-stable" like the circuit
+     breaker. Compiling against the real jar proved that wrong: decompiling
+     `DeploymentConfiguration` from `aws-java-sdk-ecs:1.12.261` shows it has
+     only `deploymentCircuitBreaker`, `minimumHealthyPercent`, and
+     `maximumPercent` -- no `alarms` field, and `DeploymentAlarms` doesn't
+     exist anywhere in that jar. Reverted cleanly (fields, wiring, and tests
+     all removed) rather than leave a feature that looks configurable but
+     silently does nothing. Same category of gap as blue/green below: needs a
+     newer `aws-java-sdk-ecs` (or the SDK v2 upgrade) before it can be
+     implemented at all.
    - **Native blue/green controller, bake time, lifecycle hooks: not
      attempted.** AWS's native (non-CodeDeploy) ECS blue/green deployment
-     strategy is a very recent addition (announced re:Invent 2024) and its
-     availability in whatever AWS SDK v1 version this repo currently pins
-     (SDK v2 upgrade is still an open, separate item -- see phase 2) could not
-     be verified in this sandbox (no network access to resolve dependencies or
-     inspect the actual jar; see verification note below). Writing code
-     against a possibly-nonexistent API surface isn't worth the risk of
-     shipping something that silently doesn't compile or misrepresents what
-     AWS actually offers. Recommend doing the SDK v2 upgrade first (which is
-     far more likely to have current blue/green support), then revisiting this
-     with a working compiler/network to confirm the real request/response
-     shapes before writing the controller.
+     strategy is a very recent addition (announced re:Invent 2024); given
+     alarms support (added earlier than blue/green) is already missing from
+     `aws-java-sdk-ecs:1.12.261`, blue/green is essentially certain to be
+     missing too. Recommend doing the SDK v2 upgrade first (or at minimum
+     bumping `aws-java-sdk-ecs` to a version that has `DeploymentAlarms`, which
+     would also unblock the alarms feature above), then revisiting both with a
+     working compiler to confirm the real request/response shapes.
    - Optional Kayenta hook: not attempted; depends on the above.
 5. **Deck polish:** native strategy registry entries and wizard fields for the
    new deployment configuration.
 
-**Verification note (applies to phases 2-4):** none of this has been compiled
-in this sandbox -- Gradle's dependency resolution is blocked here (plugin
-portal returns 429/rate-limited, and no dependencies are cached). Every method
-signature referenced against existing AWS SDK v1 / Spinnaker classes was cross-
-checked by hand against other call sites already in this codebase (e.g.
-`EcsServerGroupController`'s existing live `describeServices()` call, which
-already depends on the same `Service`/`Deployment` model classes). Run
-`./gradlew :clouddriver-ecs:test :orca-clouddriver:test --tests '*EcsNative*'`
-before relying on any of it.
+**Verification note:** network access was restored partway through this work.
+Phases 1-3 (everything except the reverted alarms attempt) have now been
+compiled for real via `./gradlew ":clouddriver:clouddriver-ecs:compileJava"
+":clouddriver:clouddriver-ecs:compileTestGroovy"` (note the composite-build
+task path -- `clouddriver` is `includeBuild`, not a plain subproject, so
+`:clouddriver-ecs:...` alone doesn't resolve from the repo root) against the
+actual pinned dependency versions, including `aws-java-sdk-ecs:1.12.261`. The
+Gradle plugin portal is still intermittently rate-limited (429) in this
+sandbox; retrying the same command a handful of times gets through it. Orca's
+side (`orca-clouddriver`) has not yet been compiled the same way -- run
+`./gradlew ":orca:orca-clouddriver:compileJava"
+":orca:orca-clouddriver:compileTestGroovy"` to verify it.
 
 ## 7. Open questions
 

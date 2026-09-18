@@ -18,7 +18,6 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
 import com.amazonaws.services.ecs.AmazonECS;
 import com.amazonaws.services.ecs.model.CreateServiceRequest;
-import com.amazonaws.services.ecs.model.DeploymentAlarms;
 import com.amazonaws.services.ecs.model.DeploymentCircuitBreaker;
 import com.amazonaws.services.ecs.model.DeploymentConfiguration;
 import com.amazonaws.services.ecs.model.Service;
@@ -155,46 +154,22 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     circuitBreaker.setEnable(nativeDescription.isEnableDeploymentCircuitBreaker());
     circuitBreaker.setRollback(nativeDescription.isDeploymentCircuitBreakerRollback());
 
-    DeploymentAlarms alarms = buildDeploymentAlarms(nativeDescription);
-    if (alarms != null) {
-      deploymentConfiguration.setAlarms(alarms);
-    }
-
     request.setDeploymentConfiguration(deploymentConfiguration);
     return request;
   }
 
   /**
-   * Builds a {@link DeploymentAlarms} only when the description actually names alarms or opts in,
-   * so a deploy that doesn't use them doesn't send an empty/disabled alarms block.
-   */
-  private static DeploymentAlarms buildDeploymentAlarms(
-      EcsNativeCreateServerGroupDescription nativeDescription) {
-    boolean hasAlarmNames =
-        nativeDescription.getAlarmNames() != null && !nativeDescription.getAlarmNames().isEmpty();
-    if (!hasAlarmNames && !nativeDescription.isEnableDeploymentAlarms()) {
-      return null;
-    }
-    return new DeploymentAlarms()
-        .withAlarmNames(nativeDescription.getAlarmNames())
-        .withEnable(true)
-        .withRollback(nativeDescription.isDeploymentAlarmsRollback());
-  }
-
-  /**
-   * Builds a {@link DeploymentConfiguration} only when the description specifies one, so an in-place
-   * update that only changes the task definition does not overwrite the service's existing rolling
-   * bounds.
+   * Builds a {@link DeploymentConfiguration} only when the description specifies one, so an
+   * in-place update that only changes the task definition does not overwrite the service's existing
+   * rolling bounds.
    */
   private DeploymentConfiguration buildDeploymentConfiguration() {
     EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
-    DeploymentAlarms alarms = buildDeploymentAlarms(nativeDescription);
     boolean hasConfig =
         nativeDescription.getMinimumHealthyPercent() != null
             || nativeDescription.getMaximumPercent() != null
             || nativeDescription.isEnableDeploymentCircuitBreaker()
-            || nativeDescription.isDeploymentCircuitBreakerRollback()
-            || alarms != null;
+            || nativeDescription.isDeploymentCircuitBreakerRollback();
     if (!hasConfig) {
       return null;
     }
@@ -211,9 +186,6 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
         new DeploymentCircuitBreaker()
             .withEnable(nativeDescription.isEnableDeploymentCircuitBreaker())
             .withRollback(nativeDescription.isDeploymentCircuitBreakerRollback()));
-    if (alarms != null) {
-      deploymentConfiguration.setAlarms(alarms);
-    }
     return deploymentConfiguration;
   }
 
