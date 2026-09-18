@@ -147,15 +147,21 @@ clouddriver (done for Phase 1):
   `getCloudProvider()` method is vestigial/unrelated), `EcrImageProvider` /
   `UnvalidatedDockerImageProvider` (`ImageRepositoryProvider` has no consumer
   in the repo that filters by cloud-provider id).
-- **Known remaining gap, not fixed (structurally different):** global search
-  (`SearchableProvider`/`EcsProvider`) scopes results by the *cache key
-  prefix* (`Keys.getCloudProvider()` = `"ecs"`), not by a swappable bean id --
-  the underlying CATS cache keys are literally written as `ecs:...`. A search
-  request filtered to `cloudProvider: "ecs-native"` would find nothing. Unlike
-  the delegates above, fixing this isn't a matter of overriding one method; it
-  would need `ecs-native`'s own `KeyParser`/cache-key scheme or a change to how
-  `supportsSearch` matches. Left for a later phase since it only affects the
-  global search bar, not deploy execution.
+- **Global search: re-checked, no fix needed.** An earlier draft of this doc
+  claimed a search filtered to `cloudProvider: "ecs-native"` would find
+  nothing because cache keys are written with the `ecs;...` prefix
+  (`Keys.SEPARATOR = ";"`, not `:`). That claim wasn't verified against the
+  actual search code and turned out to be wrong. Tracing
+  `CatsSearchProvider`/`SearchableProvider`: `EcsProvider` never overrides
+  `getKeyParser()` (inherits the interface's `Optional.empty()` default), so
+  `supportsSearch()`'s cloud-provider check (`getKeyParser().map(...).orElse(true)`)
+  always returns `true` regardless of the requested `cloudProvider` filter
+  value -- it never excludes ECS's own cache from the search, for either
+  `"ecs"` or `"ecs-native"`. Separately, the generic `buildSearchTerm()` glob
+  (colon-separated) doesn't match ECS's actual semicolon-separated keys
+  regardless of provider id, which looks like a pre-existing quirk of the
+  original `ecs` provider's search integration, unrelated to this RFC. No
+  regression from `ecs-native`, and nothing to fix here.
 
 orca (creator done for Phase 1):
 - `EcsNativeServerGroupCreator extends EcsServerGroupCreator`, overriding only
