@@ -23,9 +23,10 @@ import java.lang.annotation.Target;
 
 /**
  * Marks an {@code AtomicOperationConverter} as belonging to the second, opt-in ECS provider ({@link
- * EcsNativeCloudProvider#ID}). Converters annotated with this type are matched when a pipeline stage
- * declares {@code cloudProvider: "ecs-native"}, allowing the native-deployment write path to be
- * selected per pipeline while the existing {@link EcsOperation}-based provider is left untouched.
+ * EcsNativeCloudProvider#ID}). Converters annotated with this type are matched when a pipeline
+ * stage declares {@code cloudProvider: "ecs-native"}, allowing the native-deployment write path to
+ * be selected per pipeline while the existing {@link EcsOperation}-based provider is left
+ * untouched.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

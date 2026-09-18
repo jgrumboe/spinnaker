@@ -33,11 +33,11 @@ import org.springframework.stereotype.Component;
  * <p>The {@code ecs-native} provider deliberately reuses the original ECS caching agents and read
  * views (the running resources are the same ECS services regardless of which provider deployed
  * them) — only the write path differs. But clouddriver's read APIs (e.g. {@code ClusterController})
- * and orca's polling calls ({@code OortService#getServerGroupFromCluster},
- * {@code #getTargetServerGroup}, etc.) select a {@link ClusterProvider} by an exact match on {@link
- * ClusterProvider#getCloudProviderId()}. Without this class, a stage declaring {@code cloudProvider:
- * "ecs-native"} would deploy successfully but then fail to resolve its own server group afterwards,
- * since the only registered ECS {@link ClusterProvider} answers to {@code "ecs"}.
+ * and orca's polling calls ({@code OortService#getServerGroupFromCluster}, {@code
+ * #getTargetServerGroup}, etc.) select a {@link ClusterProvider} by an exact match on {@link
+ * ClusterProvider#getCloudProviderId()}. Without this class, a stage declaring {@code
+ * cloudProvider: "ecs-native"} would deploy successfully but then fail to resolve its own server
+ * group afterwards, since the only registered ECS {@link ClusterProvider} answers to {@code "ecs"}.
  *
  * <p>This class changes no behavior of the original provider: it is a pure delegate that forwards
  * every call to the existing {@link EcsServerClusterProvider} bean.

@@ -25,9 +25,9 @@ import org.springframework.stereotype.Component;
  * lifecycle (in-place service updates, configurable deployment configuration and circuit-breaker
  * rollback, deployment alarms, native blue/green, and observable service deployments).
  *
- * <p>It exists alongside the original {@link EcsCloudProvider} ({@code "ecs"}) rather than replacing
- * it: users choose it per pipeline by selecting an {@code ecs-native} deploy/clone stage. The
- * running ECS resources are the same objects, so this provider reuses the existing ECS caching
+ * <p>It exists alongside the original {@link EcsCloudProvider} ({@code "ecs"}) rather than
+ * replacing it: users choose it per pipeline by selecting an {@code ecs-native} deploy/clone stage.
+ * The running ECS resources are the same objects, so this provider reuses the existing ECS caching
  * agents and cluster/load-balancer/instance views; only the deploy/write path is new.
  */
 @Component

@@ -40,6 +40,7 @@ public class WaitForEcsNativeServiceDeploymentStage implements StageDefinitionBu
 
   @Override
   public void taskGraph(@Nonnull StageExecution stage, @Nonnull TaskNode.Builder builder) {
-    builder.withTask("waitForEcsNativeServiceDeployment", WaitForEcsNativeServiceDeploymentTask.class);
+    builder.withTask(
+        "waitForEcsNativeServiceDeployment", WaitForEcsNativeServiceDeploymentTask.class);
   }
 }

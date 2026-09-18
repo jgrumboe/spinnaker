@@ -17,9 +17,9 @@
 package com.netflix.spinnaker.clouddriver.ecs.controllers;
 
 import com.amazonaws.services.ecs.AmazonECS;
+import com.amazonaws.services.ecs.model.Deployment;
 import com.amazonaws.services.ecs.model.DescribeServicesRequest;
 import com.amazonaws.services.ecs.model.DescribeServicesResult;
-import com.amazonaws.services.ecs.model.Deployment;
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider;
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient;
