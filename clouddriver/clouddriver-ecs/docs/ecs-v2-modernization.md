@@ -276,17 +276,38 @@ deck:
    new deployment configuration.
 
 **Verification note:** network access was restored partway through this work.
-Phases 1-3 (everything except the reverted alarms attempt) have now been
-compiled for real via `./gradlew ":clouddriver:clouddriver-ecs:compileJava"
-":clouddriver:clouddriver-ecs:compileTestGroovy"` (note the composite-build
-task path -- `clouddriver` is `includeBuild`, not a plain subproject, so
-`:clouddriver-ecs:...` alone doesn't resolve from the repo root) against the
-actual pinned dependency versions, including `aws-java-sdk-ecs:1.12.261`. The
-Gradle plugin portal is still intermittently rate-limited (429) in this
-sandbox; retrying the same command a handful of times gets through it. Orca's
-side (`orca-clouddriver`) has not yet been compiled the same way -- run
-`./gradlew ":orca:orca-clouddriver:compileJava"
-":orca:orca-clouddriver:compileTestGroovy"` to verify it.
+Both `clouddriver-ecs` and `orca-clouddriver` now compile clean via the
+composite-build task paths (`clouddriver` and `orca` are `includeBuild`, not
+plain subprojects, so `:clouddriver-ecs:...`/`:orca-clouddriver:...` alone
+don't resolve from the repo root -- use `":clouddriver:clouddriver-ecs:..."` /
+`":orca:orca-clouddriver:..."`), against the actual pinned dependency
+versions including `aws-java-sdk-ecs:1.12.261`. The Gradle plugin portal is
+still intermittently rate-limited (429) in this sandbox; retrying the same
+command a handful of times gets through it.
+
+Running `./gradlew ":clouddriver:clouddriver-ecs:test" --tests '*EcsNative*'`
+for real caught a genuine bug the compile alone couldn't: `CreateServerGroupDescription`
+overrides `getRegion()` unconditionally to derive it from
+`getAvailabilityZones().keySet()` (there's no way to reach the plain `region`
+field on `AbstractECSDescription` once that override exists -- every
+`getRegion()` call resolves to it, however it's dispatched). The in-place-update
+path never populates `availabilityZones` (it doesn't need it -- it isn't
+creating anything), so `getAmazonEcsClient()`, `buildDeploymentResult()`, and
+anything else that calls the inherited `getRegion()` threw a
+`NullPointerException` for any in-place-update request that didn't happen to
+also set availability zones. Fixed with a `getRegion()` override in
+`EcsNativeCreateServerGroupAtomicOperation`, scoped strictly to
+`isInPlaceUpdate()`, that resolves from `description.getSource().getRegion()`
+instead -- always populated whenever `resolveExistingServiceName()` finds an
+existing service, since both come from the same deploy-stage source block.
+Deliberately not applied to normal clone flows, in-place or not, where
+`source.region` can legitimately differ from the destination
+`availabilityZones` region (e.g. a cross-region clone). All 24 `*EcsNative*`
+tests in `clouddriver-ecs` pass after the fix.
+
+`orca-clouddriver`'s `*EcsNative*` tests have not yet been run (only compiled)
+-- run `./gradlew ":orca:orca-clouddriver:test" --tests '*EcsNative*'` to
+verify them.
 
 ## 7. Open questions
 

@@ -102,7 +102,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
         maximumPercent: 150,
         enableDeploymentCircuitBreaker: true,
         deploymentCircuitBreakerRollback: true)
-    description.setSource(new CreateServerGroupDescription.Source(asgName: serviceName))
+    description.setSource(new CreateServerGroupDescription.Source(asgName: serviceName, region: 'us-west-1'))
 
     def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
     operation.getAmazonEcsClient() >> ecs
@@ -125,6 +125,16 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
           req.deploymentConfiguration.deploymentCircuitBreaker.rollback == true
     } as UpdateServiceRequest) >> new UpdateServiceResult().withService(new Service().withServiceName(serviceName))
     0 * ecs.createService(_)
-    result.serverGroupNameByRegion.containsValue(serviceName)
+    result.serverGroupNameByRegion == ['us-west-1': serviceName]
+  }
+
+  def 'getRegion resolves from the source region during in-place update, without touching availabilityZones'() {
+    given:
+    def description = new EcsNativeCreateServerGroupDescription(inPlaceUpdate: true)
+    description.setSource(new CreateServerGroupDescription.Source(asgName: 'myapp-v001', region: 'eu-west-1'))
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+
+    expect:
+    operation.getRegion() == 'eu-west-1'
   }
 }

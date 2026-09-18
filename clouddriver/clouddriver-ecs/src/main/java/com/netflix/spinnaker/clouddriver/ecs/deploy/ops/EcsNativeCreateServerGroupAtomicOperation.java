@@ -211,6 +211,33 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     return role;
   }
 
+  /**
+   * The base {@code CreateServerGroupDescription} overrides {@code getRegion()} to derive it from
+   * {@code getAvailabilityZones()} unconditionally -- there's no way to reach the plain {@code
+   * region} field on {@code AbstractECSDescription} once that override is in the hierarchy, since
+   * every {@code getRegion()} call (however it's dispatched) resolves to the same override. That's
+   * fine for a normal create, but the in-place-update path here never touches availability zones,
+   * so that map is typically unset and the override throws a {@code NullPointerException}.
+   *
+   * <p>Scoped strictly to {@link EcsNativeCreateServerGroupDescription#isInPlaceUpdate()}: the
+   * source block's region ({@code source.asgName}/{@code source.region}) is always populated
+   * whenever {@link #resolveExistingServiceName()} finds an existing service, since both come from
+   * the same deploy-stage source block. Deliberately not applied to normal clone flows (in-place or
+   * not), where {@code source.region} can legitimately differ from the destination {@code
+   * availabilityZones} region (e.g. a cross-region clone) -- only {@code inPlaceUpdate} changes the
+   * semantics enough to justify preferring the source's region.
+   */
+  @Override
+  protected String getRegion() {
+    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
+    if (nativeDescription.isInPlaceUpdate()
+        && description.getSource() != null
+        && StringUtils.isNotBlank(description.getSource().getRegion())) {
+      return description.getSource().getRegion();
+    }
+    return super.getRegion();
+  }
+
   private DeploymentResult buildDeploymentResult(Service service) {
     Map<String, String> namesByRegion = new HashMap<>();
     namesByRegion.put(getRegion(), service.getServiceName());
