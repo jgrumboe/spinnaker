@@ -16,7 +16,6 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.description;
 
-import java.util.List;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -55,14 +54,4 @@ public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription 
 
   /** Force a new deployment even when the task definition is unchanged. */
   boolean forceNewDeployment;
-
-  /** Names of CloudWatch alarms ECS should watch during this deployment. See the equivalent field
-   * on {@code EcsNativeCreateServerGroupDescription} for the full explanation. */
-  @Nullable List<String> alarmNames;
-
-  /** Enables deployment alarms for this update. Implied when {@link #getAlarmNames()} is set. */
-  boolean enableDeploymentAlarms;
-
-  /** When {@code true}, a deployment that trips a named alarm is automatically rolled back. */
-  boolean deploymentAlarmsRollback;
 }

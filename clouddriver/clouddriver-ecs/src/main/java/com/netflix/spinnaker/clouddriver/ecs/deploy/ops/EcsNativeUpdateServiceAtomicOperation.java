@@ -17,7 +17,6 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
 import com.amazonaws.services.ecs.AmazonECS;
-import com.amazonaws.services.ecs.model.DeploymentAlarms;
 import com.amazonaws.services.ecs.model.DeploymentCircuitBreaker;
 import com.amazonaws.services.ecs.model.DeploymentConfiguration;
 import com.amazonaws.services.ecs.model.UpdateServiceRequest;
@@ -69,8 +68,7 @@ public class EcsNativeUpdateServiceAtomicOperation
 
     request.setForceNewDeployment(description.isForceNewDeployment());
 
-    updateTaskStatus(
-        String.format("Updating ECS service %s in cluster %s.", serviceName, cluster));
+    updateTaskStatus(String.format("Updating ECS service %s in cluster %s.", serviceName, cluster));
     ecs.updateService(request);
     updateTaskStatus(String.format("Done updating ECS service %s.", serviceName));
 
@@ -78,18 +76,16 @@ public class EcsNativeUpdateServiceAtomicOperation
   }
 
   /**
-   * Builds a {@link DeploymentConfiguration} only when the description actually specifies one, so an
-   * update that only changes the task definition does not overwrite the service's existing rolling
-   * bounds.
+   * Builds a {@link DeploymentConfiguration} only when the description actually specifies one, so
+   * an update that only changes the task definition does not overwrite the service's existing
+   * rolling bounds.
    */
   private DeploymentConfiguration buildDeploymentConfiguration() {
-    DeploymentAlarms alarms = buildDeploymentAlarms();
     boolean hasConfig =
         description.getMinimumHealthyPercent() != null
             || description.getMaximumPercent() != null
             || description.isEnableDeploymentCircuitBreaker()
-            || description.isDeploymentCircuitBreakerRollback()
-            || alarms != null;
+            || description.isDeploymentCircuitBreakerRollback();
     if (!hasConfig) {
       return null;
     }
@@ -105,25 +101,6 @@ public class EcsNativeUpdateServiceAtomicOperation
         new DeploymentCircuitBreaker()
             .withEnable(description.isEnableDeploymentCircuitBreaker())
             .withRollback(description.isDeploymentCircuitBreakerRollback()));
-    if (alarms != null) {
-      deploymentConfiguration.setAlarms(alarms);
-    }
     return deploymentConfiguration;
-  }
-
-  /**
-   * Builds a {@link DeploymentAlarms} only when the description actually names alarms or opts in,
-   * so an update that doesn't use them doesn't send an empty/disabled alarms block.
-   */
-  private DeploymentAlarms buildDeploymentAlarms() {
-    boolean hasAlarmNames =
-        description.getAlarmNames() != null && !description.getAlarmNames().isEmpty();
-    if (!hasAlarmNames && !description.isEnableDeploymentAlarms()) {
-      return null;
-    }
-    return new DeploymentAlarms()
-        .withAlarmNames(description.getAlarmNames())
-        .withEnable(true)
-        .withRollback(description.isDeploymentAlarmsRollback());
   }
 }
