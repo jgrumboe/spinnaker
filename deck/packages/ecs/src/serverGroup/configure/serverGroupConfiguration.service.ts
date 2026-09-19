@@ -122,6 +122,22 @@ export interface IEcsServerGroupCommand {
   capacityProviderStrategy: IEcsCapacityProviderStrategyItem[];
   useDefaultCapacityProviders: boolean;
   ecsClusterName: string;
+  /**
+   * 'ecs' (default) or 'ecs-native', toggled by the "Use native ECS deployment" checkbox on the
+   * Native ECS Deployment wizard page. See EcsServerGroupTransformer.
+   */
+  cloudProvider?: string;
+  inPlaceUpdate?: boolean;
+  deploymentCircuitBreakerRollback?: boolean;
+  alarmNames?: string[];
+  enableDeploymentAlarms?: boolean;
+  deploymentAlarmsRollback?: boolean;
+  deploymentStrategy?: string;
+  bakeTimeInMinutes?: number;
+  alternateTargetGroupArn?: string;
+  productionListenerRule?: string;
+  testListenerRule?: string;
+  blueGreenRoleArn?: string;
 }
 
 export class EcsServerGroupConfigurationService {

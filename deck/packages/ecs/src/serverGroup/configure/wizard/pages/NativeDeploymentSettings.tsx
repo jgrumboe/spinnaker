@@ -3,10 +3,11 @@ import React from 'react';
 import { HelpField } from '@spinnaker/core';
 
 import type { IEcsWizardPageProps } from './common';
+import type { IEcsServerGroupCommand } from '../../serverGroupConfiguration.service';
 
 const ECS_NATIVE = 'ecs-native';
 
-export const isEcsNative = (command: { cloudProvider?: string }): boolean => command.cloudProvider === ECS_NATIVE;
+export const isEcsNative = (command: IEcsServerGroupCommand): boolean => command.cloudProvider === ECS_NATIVE;
 
 export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardPageProps) => {
   const useNative = isEcsNative(command);
