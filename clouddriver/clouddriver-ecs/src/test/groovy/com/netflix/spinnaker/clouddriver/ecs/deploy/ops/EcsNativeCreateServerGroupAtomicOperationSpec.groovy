@@ -26,6 +26,9 @@ import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.TaskDefinition
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse
+import software.amazon.awssdk.services.elasticloadbalancingv2.ElasticLoadBalancingV2Client
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeTargetGroupsResponse
+import software.amazon.awssdk.services.elasticloadbalancingv2.model.TargetGroup
 
 class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperation {
 
@@ -121,6 +124,108 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
 
     then:
     request.deploymentConfiguration().alarms() == null
+  }
+
+  def 'should apply blue/green strategy and bake time to deployment configuration'() {
+    given:
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> null
+    description.getDeploymentStrategy() >> 'BLUE_GREEN'
+    description.getBakeTimeInMinutes() >> 15
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+
+    when:
+    CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+    request.deploymentConfiguration().bakeTimeInMinutes() == 15
+  }
+
+  def 'should attach the blue/green ALB traffic-shift config to the single target-group mapping'() {
+    given:
+    def loadBalancingV2 = Mock(ElasticLoadBalancingV2Client)
+    loadBalancingV2.describeTargetGroups(_) >> DescribeTargetGroupsResponse.builder()
+        .targetGroups(TargetGroup.builder().targetGroupArn('arn:target-group').build())
+        .build()
+
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> 'my-target-group'
+    description.getContainerPort() >> 80
+    description.getAvailabilityZones() >> ['us-west-1': ['us-west-1a']]
+    description.getAlternateTargetGroupArn() >> 'arn:alternate-target-group'
+    description.getProductionListenerRule() >> 'arn:production-rule'
+    description.getTestListenerRule() >> 'arn:test-rule'
+    description.getBlueGreenRoleArn() >> 'arn:aws:iam::123456789012:role/ecsBlueGreenRole'
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+    operation.amazonClientProvider = amazonClientProvider
+    amazonClientProvider.getElasticLoadBalancingV2Client(_, _) >> loadBalancingV2
+
+    when:
+    CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    request.loadBalancers().size() == 1
+    def advancedConfig = request.loadBalancers().get(0).advancedConfiguration()
+    advancedConfig.alternateTargetGroupArn() == 'arn:alternate-target-group'
+    advancedConfig.productionListenerRule() == 'arn:production-rule'
+    advancedConfig.testListenerRule() == 'arn:test-rule'
+    advancedConfig.roleArn() == 'arn:aws:iam::123456789012:role/ecsBlueGreenRole'
+  }
+
+  def 'should reject a partially configured blue/green ALB traffic shift'() {
+    given:
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> null
+    description.getAlternateTargetGroupArn() >> 'arn:alternate-target-group'
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+
+    when:
+    operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    thrown(IllegalArgumentException)
+  }
+
+  def 'should reject a blue/green ALB traffic shift with no single target-group mapping'() {
+    given:
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> null
+    description.getAlternateTargetGroupArn() >> 'arn:alternate-target-group'
+    description.getProductionListenerRule() >> 'arn:production-rule'
+    description.getTestListenerRule() >> 'arn:test-rule'
+    description.getBlueGreenRoleArn() >> 'arn:aws:iam::123456789012:role/ecsBlueGreenRole'
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+
+    when:
+    operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    thrown(IllegalArgumentException)
   }
 
   def 'resolveExistingServiceName returns the source service when present, otherwise null'() {

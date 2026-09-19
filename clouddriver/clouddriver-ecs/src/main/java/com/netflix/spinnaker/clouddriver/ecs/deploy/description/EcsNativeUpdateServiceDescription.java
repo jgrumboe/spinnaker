@@ -67,4 +67,19 @@ public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription 
 
   /** When {@code true}, a deployment that trips a named alarm is automatically rolled back. */
   boolean deploymentAlarmsRollback;
+
+  /**
+   * Native ECS deployment strategy: {@code ROLLING} (ECS's default when left unset) or {@code
+   * BLUE_GREEN}. See the equivalent field on {@code EcsNativeCreateServerGroupDescription} for the
+   * full explanation. This operation does not touch load balancer configuration, so a {@code
+   * BLUE_GREEN} update here reuses whatever target group/listener-rule swap the service was created
+   * with; changing that swap configuration requires a create-server-group deploy.
+   */
+  @Nullable String deploymentStrategy;
+
+  /**
+   * Minutes ECS waits after a {@code BLUE_GREEN} update's new task set reaches steady state before
+   * terminating the old one. Ignored for {@code ROLLING}.
+   */
+  @Nullable Integer bakeTimeInMinutes;
 }

@@ -100,6 +100,40 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .build()
   }
 
+  void 'should apply blue/green strategy and bake time'() {
+    given:
+    def serviceName = 'myapp-kcats-liated-v007'
+    def credentials = TestCredential.named('test', [:])
+
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: serviceName,
+      taskDefinition: 'task-def-arn',
+      deploymentStrategy: 'BLUE_GREEN',
+      bakeTimeInMinutes: 15
+    ))
+
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    credentialsRepository.getOne(_) >> credentials
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest req ->
+      req.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN' &&
+        req.deploymentConfiguration().bakeTimeInMinutes() == 15
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
+  }
+
   void 'should send deployment alarms when alarm names are configured'() {
     given:
     def serviceName = 'myapp-kcats-liated-v007'

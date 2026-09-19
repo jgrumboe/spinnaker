@@ -26,16 +26,19 @@ import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName;
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixAssumeRoleEcsCredentials;
 import com.netflix.spinnaker.moniker.Namer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.services.ecs.EcsClient;
+import software.amazon.awssdk.services.ecs.model.AdvancedConfiguration;
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest;
 import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
 import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
+import software.amazon.awssdk.services.ecs.model.LoadBalancer;
 import software.amazon.awssdk.services.ecs.model.Service;
 import software.amazon.awssdk.services.ecs.model.TaskDefinition;
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
@@ -48,7 +51,8 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  *
  * <ol>
  *   <li>The native ECS {@link DeploymentConfiguration} (rolling bounds, circuit-breaker rollback,
- *       and deployment alarms) is configurable rather than hard-coded (see {@link
+ *       deployment alarms, and the {@code ROLLING}/{@code BLUE_GREEN} strategy with its optional
+ *       ALB traffic-shift config) is configurable rather than hard-coded (see {@link
  *       #makeServiceRequest}).
  *   <li>When {@link EcsNativeCreateServerGroupDescription#isInPlaceUpdate()} is set and a source
  *       server group exists, the redeploy rolls that durable service in place via a native {@code
@@ -156,8 +160,84 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     if (alarms != null) {
       deploymentConfigBuilder.alarms(alarms);
     }
+    if (StringUtils.isNotBlank(nativeDescription.getDeploymentStrategy())) {
+      deploymentConfigBuilder.strategy(nativeDescription.getDeploymentStrategy());
+    }
+    if (nativeDescription.getBakeTimeInMinutes() != null) {
+      deploymentConfigBuilder.bakeTimeInMinutes(nativeDescription.getBakeTimeInMinutes());
+    }
 
-    return request.toBuilder().deploymentConfiguration(deploymentConfigBuilder.build()).build();
+    CreateServiceRequest.Builder requestBuilder =
+        request.toBuilder().deploymentConfiguration(deploymentConfigBuilder.build());
+
+    AdvancedConfiguration advancedConfiguration = buildAdvancedConfiguration(nativeDescription);
+    if (advancedConfiguration != null) {
+      requestBuilder.loadBalancers(
+          withAdvancedConfiguration(request.loadBalancers(), advancedConfiguration));
+    }
+
+    return requestBuilder.build();
+  }
+
+  /**
+   * Builds the ALB traffic-shift config for a {@code BLUE_GREEN} deployment, or {@code null} when
+   * the deploy doesn't use one -- {@code BLUE_GREEN} works without it (ECS still stands up a new
+   * task set and swaps it into the existing target group). The four fields are all-or-nothing: they
+   * only make sense together, so a partial set is a configuration mistake, not a valid "no swap"
+   * deploy.
+   */
+  private static AdvancedConfiguration buildAdvancedConfiguration(
+      EcsNativeCreateServerGroupDescription nativeDescription) {
+    String alternateTargetGroupArn = nativeDescription.getAlternateTargetGroupArn();
+    String productionListenerRule = nativeDescription.getProductionListenerRule();
+    String testListenerRule = nativeDescription.getTestListenerRule();
+    String roleArn = nativeDescription.getBlueGreenRoleArn();
+
+    boolean anySet =
+        StringUtils.isNotBlank(alternateTargetGroupArn)
+            || StringUtils.isNotBlank(productionListenerRule)
+            || StringUtils.isNotBlank(testListenerRule)
+            || StringUtils.isNotBlank(roleArn);
+    if (!anySet) {
+      return null;
+    }
+    boolean allSet =
+        StringUtils.isNotBlank(alternateTargetGroupArn)
+            && StringUtils.isNotBlank(productionListenerRule)
+            && StringUtils.isNotBlank(testListenerRule)
+            && StringUtils.isNotBlank(roleArn);
+    if (!allSet) {
+      throw new IllegalArgumentException(
+          "alternateTargetGroupArn, productionListenerRule, testListenerRule and"
+              + " blueGreenRoleArn must all be set together to configure a blue/green ALB"
+              + " traffic shift, or all left unset to skip it.");
+    }
+    return AdvancedConfiguration.builder()
+        .alternateTargetGroupArn(alternateTargetGroupArn)
+        .productionListenerRule(productionListenerRule)
+        .testListenerRule(testListenerRule)
+        .roleArn(roleArn)
+        .build();
+  }
+
+  /**
+   * Attaches the blue/green traffic-shift config to the service's load balancer entry. Scoped to
+   * exactly one entry: {@code AdvancedConfiguration} applies to a single target-group mapping, and
+   * this operation has no way to tell which of several mappings a caller means, so it refuses
+   * rather than guessing.
+   */
+  private static List<LoadBalancer> withAdvancedConfiguration(
+      List<LoadBalancer> loadBalancers, AdvancedConfiguration advancedConfiguration) {
+    if (loadBalancers == null || loadBalancers.size() != 1) {
+      throw new IllegalArgumentException(
+          "A blue/green ALB traffic shift requires exactly one target-group mapping; found "
+              + (loadBalancers == null ? 0 : loadBalancers.size())
+              + ".");
+    }
+    List<LoadBalancer> updated = new ArrayList<>(loadBalancers.size());
+    updated.add(
+        loadBalancers.get(0).toBuilder().advancedConfiguration(advancedConfiguration).build());
+    return updated;
   }
 
   /**
@@ -173,7 +253,9 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
             || nativeDescription.getMaximumPercent() != null
             || nativeDescription.isEnableDeploymentCircuitBreaker()
             || nativeDescription.isDeploymentCircuitBreakerRollback()
-            || alarms != null;
+            || alarms != null
+            || StringUtils.isNotBlank(nativeDescription.getDeploymentStrategy())
+            || nativeDescription.getBakeTimeInMinutes() != null;
     if (!hasConfig) {
       return null;
     }
@@ -192,6 +274,12 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
             .build());
     if (alarms != null) {
       builder.alarms(alarms);
+    }
+    if (StringUtils.isNotBlank(nativeDescription.getDeploymentStrategy())) {
+      builder.strategy(nativeDescription.getDeploymentStrategy());
+    }
+    if (nativeDescription.getBakeTimeInMinutes() != null) {
+      builder.bakeTimeInMinutes(nativeDescription.getBakeTimeInMinutes());
     }
     return builder.build();
   }
