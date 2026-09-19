@@ -840,7 +840,7 @@ describe('EcsCloneServerGroupModal', () => {
     expect(wrapper.find(WizardModal).prop('taskMonitor')).toBe(wrapper.state('taskMonitor'));
   });
 
-  it('renders the legacy eight-page WizardModal grouping', () => {
+  it('renders the legacy nine-page WizardModal grouping', () => {
     const command = buildCommand({ useTaskDefinitionArtifact: false });
     const wrapper = shallow(<EcsCloneServerGroupModal {...buildProps(command)} />, {
       disableLifecycleMethods: true,
@@ -872,6 +872,7 @@ describe('EcsCloneServerGroupModal', () => {
       'Logging',
       'Service Discovery',
       'Advanced Settings',
+      'Native ECS Deployment',
     ]);
   });
 
