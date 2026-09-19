@@ -70,4 +70,46 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
 
   /** When {@code true}, a deployment that trips a named alarm is automatically rolled back. */
   boolean deploymentAlarmsRollback;
+
+  /**
+   * Native ECS deployment strategy: {@code ROLLING} (ECS's default when left unset) or {@code
+   * BLUE_GREEN}. {@code BLUE_GREEN} creates a whole new task set alongside the running one and
+   * shifts traffic to it after {@link #getBakeTimeInMinutes()}, rather than replacing tasks
+   * in-place a few at a time like {@code ROLLING} does.
+   */
+  @Nullable String deploymentStrategy;
+
+  /**
+   * Minutes ECS waits after a {@code BLUE_GREEN} deployment's new task set reaches steady state
+   * before terminating the old one. Ignored for {@code ROLLING}.
+   */
+  @Nullable Integer bakeTimeInMinutes;
+
+  /**
+   * Target group ECS shifts traffic to during a {@code BLUE_GREEN} cutover. Optional: {@code
+   * BLUE_GREEN} works without it (ECS still stands up a new task set and swaps it into the same
+   * target group used today). Set this, together with {@link #getProductionListenerRule()}, {@link
+   * #getTestListenerRule()} and {@link #getBlueGreenRoleArn()}, only to route a separate ALB
+   * listener rule at the new task set for test traffic before shifting production traffic over. All
+   * four must be set together, or none at all.
+   */
+  @Nullable String alternateTargetGroupArn;
+
+  /**
+   * ALB listener rule ECS repoints at the alternate target group once the new task set is ready for
+   * production traffic. See {@link #getAlternateTargetGroupArn()}.
+   */
+  @Nullable String productionListenerRule;
+
+  /**
+   * ALB listener rule ECS uses to send test traffic at the new task set before production traffic
+   * is shifted. See {@link #getAlternateTargetGroupArn()}.
+   */
+  @Nullable String testListenerRule;
+
+  /**
+   * IAM role ECS assumes to modify the listener rules above on this account's behalf. See {@link
+   * #getAlternateTargetGroupArn()}.
+   */
+  @Nullable String blueGreenRoleArn;
 }

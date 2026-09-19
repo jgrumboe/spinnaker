@@ -88,7 +88,9 @@ public class EcsNativeUpdateServiceAtomicOperation
             || description.getMaximumPercent() != null
             || description.isEnableDeploymentCircuitBreaker()
             || description.isDeploymentCircuitBreakerRollback()
-            || alarms != null;
+            || alarms != null
+            || StringUtils.isNotBlank(description.getDeploymentStrategy())
+            || description.getBakeTimeInMinutes() != null;
     if (!hasConfig) {
       return null;
     }
@@ -107,6 +109,12 @@ public class EcsNativeUpdateServiceAtomicOperation
             .build());
     if (alarms != null) {
       builder.alarms(alarms);
+    }
+    if (StringUtils.isNotBlank(description.getDeploymentStrategy())) {
+      builder.strategy(description.getDeploymentStrategy());
+    }
+    if (description.getBakeTimeInMinutes() != null) {
+      builder.bakeTimeInMinutes(description.getBakeTimeInMinutes());
     }
     return builder.build();
   }
