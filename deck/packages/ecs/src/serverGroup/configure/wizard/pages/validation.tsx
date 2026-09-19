@@ -166,12 +166,37 @@ export const validateEcsCapacity: Validator = (values) => {
   return validationErrors;
 };
 
+export const validateEcsNativeDeployment: Validator = (values) => {
+  const errors: ValidationErrors = {};
+  if (values.cloudProvider !== 'ecs-native') {
+    return errors;
+  }
+  const blueGreenFields = [
+    'alternateTargetGroupArn',
+    'productionListenerRule',
+    'testListenerRule',
+    'blueGreenRoleArn',
+  ] as const;
+  const setCount = blueGreenFields.filter((field) => required(values[field])).length;
+  if (setCount > 0 && setCount < blueGreenFields.length) {
+    const message =
+      'Alternate target group ARN, production listener rule, test listener rule, and blue/green IAM role must all be set together, or all left blank.';
+    blueGreenFields.forEach((field) => {
+      if (!required(values[field])) {
+        errors[field] = message;
+      }
+    });
+  }
+  return errors;
+};
+
 export const validateEcsServerGroup: Validator = (values) => ({
   ...validateEcsBasicSettings(values),
   ...validateEcsTaskDefinition(values),
   ...validateEcsContainer(values),
   ...validateEcsServiceDiscovery(values),
   ...validateEcsCapacity(values),
+  ...validateEcsNativeDeployment(values),
 });
 
 interface IEcsWizardPageValidationProps {
