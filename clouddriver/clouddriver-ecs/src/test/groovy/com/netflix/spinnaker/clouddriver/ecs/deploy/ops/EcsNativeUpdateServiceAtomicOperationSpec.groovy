@@ -16,11 +16,11 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops
 
-import com.amazonaws.services.ecs.model.Service
-import com.amazonaws.services.ecs.model.UpdateServiceRequest
-import com.amazonaws.services.ecs.model.UpdateServiceResult
 import com.netflix.spinnaker.clouddriver.ecs.TestCredential
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeUpdateServiceDescription
+import software.amazon.awssdk.services.ecs.model.Service
+import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
+import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse
 
 class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
 
@@ -45,7 +45,7 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     operation.credentialsRepository = credentialsRepository
     operation.containerInformationService = containerInformationService
 
-    amazonClientProvider.getAmazonEcs(_, _, _) >> ecs
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
     containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
     credentialsRepository.getOne(_) >> credentials
 
@@ -54,15 +54,17 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
 
     then:
     1 * ecs.updateService({ UpdateServiceRequest req ->
-      req.cluster == 'my-cluster' &&
-        req.service == serviceName &&
-        req.taskDefinition == 'task-def-arn' &&
-        req.forceNewDeployment == true &&
-        req.deploymentConfiguration.minimumHealthyPercent == 50 &&
-        req.deploymentConfiguration.maximumPercent == 150 &&
-        req.deploymentConfiguration.deploymentCircuitBreaker.enable == true &&
-        req.deploymentConfiguration.deploymentCircuitBreaker.rollback == true
-    } as UpdateServiceRequest) >> new UpdateServiceResult().withService(new Service().withServiceName(serviceName))
+      req.cluster() == 'my-cluster' &&
+        req.service() == serviceName &&
+        req.taskDefinition() == 'task-def-arn' &&
+        req.forceNewDeployment() == true &&
+        req.deploymentConfiguration().minimumHealthyPercent() == 50 &&
+        req.deploymentConfiguration().maximumPercent() == 150 &&
+        req.deploymentConfiguration().deploymentCircuitBreaker().enable() == true &&
+        req.deploymentConfiguration().deploymentCircuitBreaker().rollback() == true
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
   }
 
   void 'should not send a deployment configuration when none is specified'() {
@@ -81,7 +83,7 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     operation.credentialsRepository = credentialsRepository
     operation.containerInformationService = containerInformationService
 
-    amazonClientProvider.getAmazonEcs(_, _, _) >> ecs
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
     containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
     credentialsRepository.getOne(_) >> credentials
 
@@ -90,9 +92,46 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
 
     then:
     1 * ecs.updateService({ UpdateServiceRequest req ->
-      req.service == serviceName &&
-        req.taskDefinition == 'task-def-arn' &&
-        req.deploymentConfiguration == null
-    } as UpdateServiceRequest) >> new UpdateServiceResult().withService(new Service().withServiceName(serviceName))
+      req.service() == serviceName &&
+        req.taskDefinition() == 'task-def-arn' &&
+        req.deploymentConfiguration() == null
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
+  }
+
+  void 'should send deployment alarms when alarm names are configured'() {
+    given:
+    def serviceName = 'myapp-kcats-liated-v007'
+    def credentials = TestCredential.named('test', [:])
+
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: serviceName,
+      taskDefinition: 'task-def-arn',
+      alarmNames: ['myapp-high-error-rate'],
+      deploymentAlarmsRollback: true
+    ))
+
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    credentialsRepository.getOne(_) >> credentials
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest req ->
+      req.deploymentConfiguration().alarms().alarmNames() == ['myapp-high-error-rate'] &&
+        req.deploymentConfiguration().alarms().enable() == true &&
+        req.deploymentConfiguration().alarms().rollback() == true
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
   }
 }

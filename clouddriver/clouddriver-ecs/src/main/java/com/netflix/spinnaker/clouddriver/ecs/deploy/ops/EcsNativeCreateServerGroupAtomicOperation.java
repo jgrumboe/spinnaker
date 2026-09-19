@@ -16,13 +16,6 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
-import com.amazonaws.services.ecs.AmazonECS;
-import com.amazonaws.services.ecs.model.CreateServiceRequest;
-import com.amazonaws.services.ecs.model.DeploymentCircuitBreaker;
-import com.amazonaws.services.ecs.model.DeploymentConfiguration;
-import com.amazonaws.services.ecs.model.Service;
-import com.amazonaws.services.ecs.model.TaskDefinition;
-import com.amazonaws.services.ecs.model.UpdateServiceRequest;
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.AssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAssumeRoleAmazonCredentials;
@@ -38,6 +31,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
+import software.amazon.awssdk.services.ecs.EcsClient;
+import software.amazon.awssdk.services.ecs.model.CreateServiceRequest;
+import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
+import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
+import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
+import software.amazon.awssdk.services.ecs.model.Service;
+import software.amazon.awssdk.services.ecs.model.TaskDefinition;
+import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 
 /**
  * Create-server-group operation for the opt-in {@code ecs-native} provider.
@@ -46,8 +47,9 @@ import org.apache.commons.lang3.StringUtils;
  * networking, scaling and tagging logic, and diverges in two ways:
  *
  * <ol>
- *   <li>The native ECS {@link DeploymentConfiguration} (rolling bounds + circuit-breaker rollback)
- *       is configurable rather than hard-coded (see {@link #makeServiceRequest}).
+ *   <li>The native ECS {@link DeploymentConfiguration} (rolling bounds, circuit-breaker rollback,
+ *       and deployment alarms) is configurable rather than hard-coded (see {@link
+ *       #makeServiceRequest}).
  *   <li>When {@link EcsNativeCreateServerGroupDescription#isInPlaceUpdate()} is set and a source
  *       server group exists, the redeploy rolls that durable service in place via a native {@code
  *       UpdateService} instead of creating a new versioned service (see {@link #operate}).
@@ -94,26 +96,26 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
             + existingServiceName
             + " in place via native UpdateService...");
 
-    AmazonECS ecs = getAmazonEcsClient();
+    EcsClient ecs = getAmazonEcsClient();
     String taskRoleArn = resolveTaskRoleArn(getCredentials());
 
     // Register a new revision under the same family as the existing service.
     EcsServerGroupName serverGroupName = new EcsServerGroupName(existingServiceName);
     TaskDefinition taskDefinition = registerTaskDefinition(ecs, taskRoleArn, serverGroupName);
 
-    UpdateServiceRequest request =
-        new UpdateServiceRequest()
-            .withCluster(description.getEcsClusterName())
-            .withService(existingServiceName)
-            .withTaskDefinition(taskDefinition.getTaskDefinitionArn())
-            .withForceNewDeployment(true);
+    UpdateServiceRequest.Builder requestBuilder =
+        UpdateServiceRequest.builder()
+            .cluster(description.getEcsClusterName())
+            .service(existingServiceName)
+            .taskDefinition(taskDefinition.taskDefinitionArn())
+            .forceNewDeployment(true);
 
     DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
     if (deploymentConfiguration != null) {
-      request.setDeploymentConfiguration(deploymentConfiguration);
+      requestBuilder.deploymentConfiguration(deploymentConfiguration);
     }
 
-    Service service = ecs.updateService(request).getService();
+    Service service = ecs.updateService(requestBuilder.build()).service();
     updateTaskStatus("Done rolling ecs-native service " + existingServiceName + " in place.");
 
     return buildDeploymentResult(service);
@@ -133,29 +135,29 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
 
     EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
 
-    DeploymentConfiguration deploymentConfiguration = request.getDeploymentConfiguration();
-    if (deploymentConfiguration == null) {
-      deploymentConfiguration = new DeploymentConfiguration();
-    }
+    DeploymentConfiguration.Builder deploymentConfigBuilder =
+        request.deploymentConfiguration() != null
+            ? request.deploymentConfiguration().toBuilder()
+            : DeploymentConfiguration.builder();
 
     if (nativeDescription.getMinimumHealthyPercent() != null) {
-      deploymentConfiguration.setMinimumHealthyPercent(
-          nativeDescription.getMinimumHealthyPercent());
+      deploymentConfigBuilder.minimumHealthyPercent(nativeDescription.getMinimumHealthyPercent());
     }
     if (nativeDescription.getMaximumPercent() != null) {
-      deploymentConfiguration.setMaximumPercent(nativeDescription.getMaximumPercent());
+      deploymentConfigBuilder.maximumPercent(nativeDescription.getMaximumPercent());
+    }
+    deploymentConfigBuilder.deploymentCircuitBreaker(
+        DeploymentCircuitBreaker.builder()
+            .enable(nativeDescription.isEnableDeploymentCircuitBreaker())
+            .rollback(nativeDescription.isDeploymentCircuitBreakerRollback())
+            .build());
+
+    DeploymentAlarms alarms = buildDeploymentAlarms(nativeDescription);
+    if (alarms != null) {
+      deploymentConfigBuilder.alarms(alarms);
     }
 
-    DeploymentCircuitBreaker circuitBreaker = deploymentConfiguration.getDeploymentCircuitBreaker();
-    if (circuitBreaker == null) {
-      circuitBreaker = new DeploymentCircuitBreaker();
-      deploymentConfiguration.setDeploymentCircuitBreaker(circuitBreaker);
-    }
-    circuitBreaker.setEnable(nativeDescription.isEnableDeploymentCircuitBreaker());
-    circuitBreaker.setRollback(nativeDescription.isDeploymentCircuitBreakerRollback());
-
-    request.setDeploymentConfiguration(deploymentConfiguration);
-    return request;
+    return request.toBuilder().deploymentConfiguration(deploymentConfigBuilder.build()).build();
   }
 
   /**
@@ -165,28 +167,51 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    */
   private DeploymentConfiguration buildDeploymentConfiguration() {
     EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
+    DeploymentAlarms alarms = buildDeploymentAlarms(nativeDescription);
     boolean hasConfig =
         nativeDescription.getMinimumHealthyPercent() != null
             || nativeDescription.getMaximumPercent() != null
             || nativeDescription.isEnableDeploymentCircuitBreaker()
-            || nativeDescription.isDeploymentCircuitBreakerRollback();
+            || nativeDescription.isDeploymentCircuitBreakerRollback()
+            || alarms != null;
     if (!hasConfig) {
       return null;
     }
 
-    DeploymentConfiguration deploymentConfiguration = new DeploymentConfiguration();
+    DeploymentConfiguration.Builder builder = DeploymentConfiguration.builder();
     if (nativeDescription.getMinimumHealthyPercent() != null) {
-      deploymentConfiguration.setMinimumHealthyPercent(
-          nativeDescription.getMinimumHealthyPercent());
+      builder.minimumHealthyPercent(nativeDescription.getMinimumHealthyPercent());
     }
     if (nativeDescription.getMaximumPercent() != null) {
-      deploymentConfiguration.setMaximumPercent(nativeDescription.getMaximumPercent());
+      builder.maximumPercent(nativeDescription.getMaximumPercent());
     }
-    deploymentConfiguration.setDeploymentCircuitBreaker(
-        new DeploymentCircuitBreaker()
-            .withEnable(nativeDescription.isEnableDeploymentCircuitBreaker())
-            .withRollback(nativeDescription.isDeploymentCircuitBreakerRollback()));
-    return deploymentConfiguration;
+    builder.deploymentCircuitBreaker(
+        DeploymentCircuitBreaker.builder()
+            .enable(nativeDescription.isEnableDeploymentCircuitBreaker())
+            .rollback(nativeDescription.isDeploymentCircuitBreakerRollback())
+            .build());
+    if (alarms != null) {
+      builder.alarms(alarms);
+    }
+    return builder.build();
+  }
+
+  /**
+   * Builds a {@link DeploymentAlarms} only when the description actually names alarms or opts in,
+   * so a deploy that doesn't use them doesn't send an empty/disabled alarms block.
+   */
+  private static DeploymentAlarms buildDeploymentAlarms(
+      EcsNativeCreateServerGroupDescription nativeDescription) {
+    boolean hasAlarmNames =
+        nativeDescription.getAlarmNames() != null && !nativeDescription.getAlarmNames().isEmpty();
+    if (!hasAlarmNames && !nativeDescription.isEnableDeploymentAlarms()) {
+      return null;
+    }
+    return DeploymentAlarms.builder()
+        .alarmNames(nativeDescription.getAlarmNames())
+        .enable(true)
+        .rollback(nativeDescription.isDeploymentAlarmsRollback())
+        .build();
   }
 
   /**
@@ -240,11 +265,11 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
 
   private DeploymentResult buildDeploymentResult(Service service) {
     Map<String, String> namesByRegion = new HashMap<>();
-    namesByRegion.put(getRegion(), service.getServiceName());
+    namesByRegion.put(getRegion(), service.serviceName());
 
     DeploymentResult result = new DeploymentResult();
     result.setServerGroupNames(
-        Collections.singletonList(getRegion() + ":" + service.getServiceName()));
+        Collections.singletonList(getRegion() + ":" + service.serviceName()));
     result.setServerGroupNameByRegion(namesByRegion);
     return result;
   }

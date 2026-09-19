@@ -16,10 +16,6 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.controllers;
 
-import com.amazonaws.services.ecs.AmazonECS;
-import com.amazonaws.services.ecs.model.Deployment;
-import com.amazonaws.services.ecs.model.DescribeServicesRequest;
-import com.amazonaws.services.ecs.model.DescribeServicesResult;
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider;
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient;
@@ -27,7 +23,7 @@ import com.netflix.spinnaker.clouddriver.ecs.cache.model.Service;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsServiceDeploymentStatus;
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials;
 import com.netflix.spinnaker.credentials.CredentialsRepository;
-import java.util.Date;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +33,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import software.amazon.awssdk.services.ecs.EcsClient;
+import software.amazon.awssdk.services.ecs.model.Deployment;
+import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
+import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse;
 
 /**
  * Exposes ECS's own native deployment/rollout state for a service, live from {@code
@@ -87,14 +87,15 @@ public class EcsNativeServiceDeploymentController {
           HttpStatus.NOT_FOUND);
     }
 
-    AmazonECS ecs = amazonClientProvider.getAmazonEcs(credentials, region, true);
-    DescribeServicesResult result =
+    EcsClient ecs = amazonClientProvider.getAmazonEcsV2(credentials, region);
+    DescribeServicesResponse result =
         ecs.describeServices(
-            new DescribeServicesRequest()
-                .withServices(serverGroupName)
-                .withCluster(cachedService.get().getClusterArn()));
+            DescribeServicesRequest.builder()
+                .services(serverGroupName)
+                .cluster(cachedService.get().getClusterArn())
+                .build());
 
-    if (result.getServices().isEmpty()) {
+    if (result.services().isEmpty()) {
       return new ResponseEntity<>(
           String.format(
               "Server group %s was not found in ECS for account %s / region %s",
@@ -102,9 +103,9 @@ public class EcsNativeServiceDeploymentController {
           HttpStatus.NOT_FOUND);
     }
 
-    List<Deployment> deployments = result.getServices().get(0).getDeployments();
+    List<Deployment> deployments = result.services().get(0).deployments();
     Optional<Deployment> primaryDeployment =
-        deployments.stream().filter(d -> "PRIMARY".equals(d.getStatus())).findFirst();
+        deployments.stream().filter(d -> "PRIMARY".equals(d.status())).findFirst();
     if (primaryDeployment.isEmpty()) {
       return new ResponseEntity<>(
           String.format("No PRIMARY deployment found for server group %s", serverGroupName),
@@ -121,20 +122,20 @@ public class EcsNativeServiceDeploymentController {
     EcsServiceDeploymentStatus status = new EcsServiceDeploymentStatus();
     status.setServiceName(serviceName);
     status.setClusterArn(clusterArn);
-    status.setDeploymentId(deployment.getId());
-    status.setStatus(deployment.getStatus());
-    status.setRolloutState(deployment.getRolloutState());
-    status.setRolloutStateReason(deployment.getRolloutStateReason());
-    status.setDesiredCount(deployment.getDesiredCount());
-    status.setRunningCount(deployment.getRunningCount());
-    status.setPendingCount(deployment.getPendingCount());
-    status.setFailedTasks(deployment.getFailedTasks());
-    status.setCreatedAt(toEpochMillis(deployment.getCreatedAt()));
-    status.setUpdatedAt(toEpochMillis(deployment.getUpdatedAt()));
+    status.setDeploymentId(deployment.id());
+    status.setStatus(deployment.status());
+    status.setRolloutState(deployment.rolloutStateAsString());
+    status.setRolloutStateReason(deployment.rolloutStateReason());
+    status.setDesiredCount(deployment.desiredCount());
+    status.setRunningCount(deployment.runningCount());
+    status.setPendingCount(deployment.pendingCount());
+    status.setFailedTasks(deployment.failedTasks());
+    status.setCreatedAt(toEpochMillis(deployment.createdAt()));
+    status.setUpdatedAt(toEpochMillis(deployment.updatedAt()));
     return status;
   }
 
-  private static Long toEpochMillis(Date date) {
-    return date == null ? null : date.getTime();
+  private static Long toEpochMillis(Instant instant) {
+    return instant == null ? null : instant.toEpochMilli();
   }
 }

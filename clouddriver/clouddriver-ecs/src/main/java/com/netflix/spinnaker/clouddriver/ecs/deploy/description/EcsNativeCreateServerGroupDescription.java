@@ -16,6 +16,7 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.description;
 
+import java.util.List;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -23,8 +24,8 @@ import lombok.EqualsAndHashCode;
 /**
  * Deploy description for the opt-in {@code ecs-native} provider. It extends the existing ECS
  * create-server-group contract and adds the native ECS deployment-configuration knobs that the
- * original provider hard-codes: the minimum-healthy / maximum-percent bounds and whether the
- * deployment circuit breaker should automatically roll back on failure.
+ * original provider hard-codes: the minimum-healthy / maximum-percent bounds, whether the
+ * deployment circuit breaker should automatically roll back on failure, and deployment alarms.
  *
  * <p>All fields are optional. When left unset the behavior matches the original {@code ecs}
  * provider (100/200 percent, circuit-breaker rollback disabled), so an {@code ecs-native} deploy
@@ -54,4 +55,19 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
    * with a red/black strategy, which would disable and destroy the service that was just updated.
    */
   boolean inPlaceUpdate;
+
+  /**
+   * Names of CloudWatch alarms ECS should watch during a deployment. When non-empty (or {@link
+   * #isEnableDeploymentAlarms()} is set), ECS's deployment alarms are enabled for the service: if
+   * any named alarm is in {@code ALARM} state during a deployment, ECS marks the deployment failed
+   * and (when {@link #isDeploymentAlarmsRollback()} is set) automatically rolls it back.
+   * Independent of the deployment circuit breaker, which only reacts to task health.
+   */
+  @Nullable List<String> alarmNames;
+
+  /** Enables deployment alarms for the service. Implied when {@link #getAlarmNames()} is set. */
+  boolean enableDeploymentAlarms;
+
+  /** When {@code true}, a deployment that trips a named alarm is automatically rolled back. */
+  boolean deploymentAlarmsRollback;
 }

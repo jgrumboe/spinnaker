@@ -16,14 +16,15 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
-import com.amazonaws.services.ecs.AmazonECS;
-import com.amazonaws.services.ecs.model.DeploymentCircuitBreaker;
-import com.amazonaws.services.ecs.model.DeploymentConfiguration;
-import com.amazonaws.services.ecs.model.UpdateServiceRequest;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeUpdateServiceDescription;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
+import software.amazon.awssdk.services.ecs.EcsClient;
+import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
+import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
+import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
+import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 
 /**
  * In-place {@code UpdateService} for the opt-in {@code ecs-native} provider.
@@ -44,7 +45,7 @@ public class EcsNativeUpdateServiceAtomicOperation
   public Void operate(List priorOutputs) {
     updateTaskStatus("Initializing Update ECS Server Group (native) Operation...");
 
-    AmazonECS ecs = getAmazonEcsClient();
+    EcsClient ecs = getAmazonEcsClient();
 
     String serviceName = description.getServerGroupName();
     String cluster = description.getEcsClusterName();
@@ -54,22 +55,22 @@ public class EcsNativeUpdateServiceAtomicOperation
               serviceName, description.getAccount(), description.getRegion());
     }
 
-    UpdateServiceRequest request =
-        new UpdateServiceRequest().withCluster(cluster).withService(serviceName);
+    UpdateServiceRequest.Builder requestBuilder =
+        UpdateServiceRequest.builder().cluster(cluster).service(serviceName);
 
     if (StringUtils.isNotBlank(description.getTaskDefinition())) {
-      request.setTaskDefinition(description.getTaskDefinition());
+      requestBuilder.taskDefinition(description.getTaskDefinition());
     }
 
     DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
     if (deploymentConfiguration != null) {
-      request.setDeploymentConfiguration(deploymentConfiguration);
+      requestBuilder.deploymentConfiguration(deploymentConfiguration);
     }
 
-    request.setForceNewDeployment(description.isForceNewDeployment());
+    requestBuilder.forceNewDeployment(description.isForceNewDeployment());
 
     updateTaskStatus(String.format("Updating ECS service %s in cluster %s.", serviceName, cluster));
-    ecs.updateService(request);
+    ecs.updateService(requestBuilder.build());
     updateTaskStatus(String.format("Done updating ECS service %s.", serviceName));
 
     return null;
@@ -81,26 +82,49 @@ public class EcsNativeUpdateServiceAtomicOperation
    * rolling bounds.
    */
   private DeploymentConfiguration buildDeploymentConfiguration() {
+    DeploymentAlarms alarms = buildDeploymentAlarms();
     boolean hasConfig =
         description.getMinimumHealthyPercent() != null
             || description.getMaximumPercent() != null
             || description.isEnableDeploymentCircuitBreaker()
-            || description.isDeploymentCircuitBreakerRollback();
+            || description.isDeploymentCircuitBreakerRollback()
+            || alarms != null;
     if (!hasConfig) {
       return null;
     }
 
-    DeploymentConfiguration deploymentConfiguration = new DeploymentConfiguration();
+    DeploymentConfiguration.Builder builder = DeploymentConfiguration.builder();
     if (description.getMinimumHealthyPercent() != null) {
-      deploymentConfiguration.setMinimumHealthyPercent(description.getMinimumHealthyPercent());
+      builder.minimumHealthyPercent(description.getMinimumHealthyPercent());
     }
     if (description.getMaximumPercent() != null) {
-      deploymentConfiguration.setMaximumPercent(description.getMaximumPercent());
+      builder.maximumPercent(description.getMaximumPercent());
     }
-    deploymentConfiguration.setDeploymentCircuitBreaker(
-        new DeploymentCircuitBreaker()
-            .withEnable(description.isEnableDeploymentCircuitBreaker())
-            .withRollback(description.isDeploymentCircuitBreakerRollback()));
-    return deploymentConfiguration;
+    builder.deploymentCircuitBreaker(
+        DeploymentCircuitBreaker.builder()
+            .enable(description.isEnableDeploymentCircuitBreaker())
+            .rollback(description.isDeploymentCircuitBreakerRollback())
+            .build());
+    if (alarms != null) {
+      builder.alarms(alarms);
+    }
+    return builder.build();
+  }
+
+  /**
+   * Builds a {@link DeploymentAlarms} only when the description actually names alarms or opts in,
+   * so an update that doesn't use them doesn't send an empty/disabled alarms block.
+   */
+  private DeploymentAlarms buildDeploymentAlarms() {
+    boolean hasAlarmNames =
+        description.getAlarmNames() != null && !description.getAlarmNames().isEmpty();
+    if (!hasAlarmNames && !description.isEnableDeploymentAlarms()) {
+      return null;
+    }
+    return DeploymentAlarms.builder()
+        .alarmNames(description.getAlarmNames())
+        .enable(true)
+        .rollback(description.isDeploymentAlarmsRollback())
+        .build();
   }
 }
