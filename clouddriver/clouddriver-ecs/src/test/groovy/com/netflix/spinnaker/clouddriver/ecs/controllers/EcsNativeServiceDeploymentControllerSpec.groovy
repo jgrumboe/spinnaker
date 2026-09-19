@@ -16,10 +16,6 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.controllers
 
-import com.amazonaws.services.ecs.AmazonECS
-import com.amazonaws.services.ecs.model.DescribeServicesResult
-import com.amazonaws.services.ecs.model.Deployment
-import com.amazonaws.services.ecs.model.Service as AmazonEcsService
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAmazonCredentials
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient
@@ -29,13 +25,17 @@ import com.netflix.spinnaker.credentials.CredentialsRepository
 import org.springframework.http.HttpStatus
 import spock.lang.Specification
 import spock.lang.Subject
+import software.amazon.awssdk.services.ecs.EcsClient
+import software.amazon.awssdk.services.ecs.model.Deployment
+import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
+import software.amazon.awssdk.services.ecs.model.Service as AmazonEcsService
 
 class EcsNativeServiceDeploymentControllerSpec extends Specification {
 
   def credentialsRepository = Mock(CredentialsRepository)
   def amazonClientProvider = Mock(AmazonClientProvider)
   def serviceCacheClient = Mock(ServiceCacheClient)
-  def ecs = Mock(AmazonECS)
+  def ecs = Mock(EcsClient)
 
   @Subject
   def controller = new EcsNativeServiceDeploymentController(
@@ -69,11 +69,12 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
     credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
     def cachedService = new Service(serviceName: 'myapp-v001', clusterArn: 'cluster-arn')
     serviceCacheClient.getAll('test', 'us-west-2') >> [cachedService]
-    amazonClientProvider.getAmazonEcs(_, 'us-west-2', true) >> ecs
+    amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
 
-    def inactiveDeployment = new Deployment().withStatus('INACTIVE')
-    ecs.describeServices(_) >> new DescribeServicesResult().withServices(
-      new AmazonEcsService().withDeployments(inactiveDeployment))
+    def inactiveDeployment = Deployment.builder().status('INACTIVE').build()
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+      .services(AmazonEcsService.builder().deployments(inactiveDeployment).build())
+      .build()
 
     when:
     def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp-v001')
@@ -87,19 +88,21 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
     credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
     def cachedService = new Service(serviceName: 'myapp-v001', clusterArn: 'cluster-arn')
     serviceCacheClient.getAll('test', 'us-west-2') >> [cachedService]
-    amazonClientProvider.getAmazonEcs(_, 'us-west-2', true) >> ecs
+    amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
 
-    def primaryDeployment = new Deployment()
-      .withId('ecs-svc/deployment-1')
-      .withStatus('PRIMARY')
-      .withRolloutState('IN_PROGRESS')
-      .withRolloutStateReason('ECS deployment ecs-svc/deployment-1 in progress.')
-      .withDesiredCount(3)
-      .withRunningCount(2)
-      .withPendingCount(1)
-      .withFailedTasks(0)
-    ecs.describeServices(_) >> new DescribeServicesResult().withServices(
-      new AmazonEcsService().withDeployments(primaryDeployment))
+    def primaryDeployment = Deployment.builder()
+      .id('ecs-svc/deployment-1')
+      .status('PRIMARY')
+      .rolloutState('IN_PROGRESS')
+      .rolloutStateReason('ECS deployment ecs-svc/deployment-1 in progress.')
+      .desiredCount(3)
+      .runningCount(2)
+      .pendingCount(1)
+      .failedTasks(0)
+      .build()
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+      .services(AmazonEcsService.builder().deployments(primaryDeployment).build())
+      .build()
 
     when:
     def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp-v001')
