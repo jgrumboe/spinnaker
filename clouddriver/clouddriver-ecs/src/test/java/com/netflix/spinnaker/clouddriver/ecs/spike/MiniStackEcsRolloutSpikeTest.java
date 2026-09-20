@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.ministack.testcontainers.MiniStackContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -64,6 +65,11 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  * real AWS. The answer here determines whether a MiniStack-backed e2e test for ecs-native can
  * assert on real rollout behavior, or only on "the service/task definition ended up correct."
  *
+ * <p>Round 1 (against the released {@code 1.5.10} image) found that MiniStack simulates
+ * per-deployment {@code rolloutState} correctly, but never drains/removes the old deployment from
+ * the list -- see ministackorg/ministack#1779, which claims to fix exactly that. This round points
+ * at that PR's CI-built preview image instead of a released tag, to check the fix before it merges.
+ *
  * <p>This test is deliberately verbose (see the {@code System.out.println} calls) so that whatever
  * happens -- pass, fail, or an exception from an AWS API MiniStack doesn't support -- the raw CI
  * job log is self-explanatory without needing to attach a debugger.
@@ -72,13 +78,15 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 class MiniStackEcsRolloutSpikeTest {
 
   /**
-   * Same tag already vetted elsewhere in this repo for MiniStack's S3 emulation (see {@code
-   * AmazonS3DataProviderMiniStackTest}). Not yet confirmed to include the Docker-socket-backed ECS
-   * "real infrastructure" feature at this specific version -- if it doesn't, the container startup
-   * or the first ECS call below will fail with an actionable error, which is itself a valid spike
-   * result.
+   * CI-built preview image for ministackorg/ministack#1779 ("fix(ecs): drain completed service
+   * deployments"), published by that PR's own GitHub Actions run -- not yet merged/released. Lives
+   * under a different image repository than the released {@code ministackorg/ministack} image, so
+   * this is wrapped with {@code asCompatibleSubstituteFor} below rather than passed as a plain tag.
+   * Swap back to a released {@code MiniStackContainer("<tag>")} once #1779 merges and ships.
    */
-  private static final String MINISTACK_IMAGE_TAG = "1.5.10";
+  private static final DockerImageName MINISTACK_PR_1779_PREVIEW_IMAGE =
+      DockerImageName.parse("ministackorg/ministack-preview-build:pr-1779-51b00d6c")
+          .asCompatibleSubstituteFor("ministackorg/ministack");
 
   private static final String REGION = "us-east-1";
   private static final String CLUSTER_NAME = "spike-cluster";
@@ -88,7 +96,7 @@ class MiniStackEcsRolloutSpikeTest {
 
   @Container
   static final MiniStackContainer ministack =
-      new MiniStackContainer(MINISTACK_IMAGE_TAG).withRealInfrastructure();
+      new MiniStackContainer(MINISTACK_PR_1779_PREVIEW_IMAGE).withRealInfrastructure();
 
   private static EcsClient ecsClient;
 
