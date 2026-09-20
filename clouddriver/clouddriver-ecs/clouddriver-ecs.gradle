@@ -45,6 +45,10 @@ dependencies {
   testImplementation "org.spockframework:spock-core"
   testImplementation "org.spockframework:spock-spring"
   testImplementation "org.springframework.boot:spring-boot-starter-test"
+  testImplementation "org.junit.jupiter:junit-jupiter-api"
+  testImplementation "org.testcontainers:testcontainers"
+  testImplementation "org.testcontainers:junit-jupiter"
+  testImplementation "org.ministack:testcontainers-ministack"
   integrationImplementation 'org.springframework.boot:spring-boot-starter-security'
 
   integrationImplementation project(":clouddriver-web")
