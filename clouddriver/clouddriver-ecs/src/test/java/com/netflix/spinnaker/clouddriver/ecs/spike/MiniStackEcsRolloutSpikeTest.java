@@ -42,6 +42,8 @@ import software.amazon.awssdk.services.ecs.model.ContainerDefinition;
 import software.amazon.awssdk.services.ecs.model.CreateClusterRequest;
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest;
 import software.amazon.awssdk.services.ecs.model.Deployment;
+import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
+import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
 import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
 import software.amazon.awssdk.services.ecs.model.LaunchType;
 import software.amazon.awssdk.services.ecs.model.NetworkConfiguration;
@@ -67,8 +69,17 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  *
  * <p>Round 1 (against the released {@code 1.5.10} image) found that MiniStack simulates
  * per-deployment {@code rolloutState} correctly, but never drains/removes the old deployment from
- * the list -- see ministackorg/ministack#1779, which claims to fix exactly that. This round points
- * at that PR's CI-built preview image instead of a released tag, to check the fix before it merges.
+ * the list -- see ministackorg/ministack#1779, which claims to fix exactly that. Round 2, against
+ * that PR's CI-built preview image, confirmed the fix: the deployments list now collapses to one
+ * entry on the new revision once the rollout completes.
+ *
+ * <p>Round 3 (this one) asks the remaining open question: does MiniStack simulate ECS's deployment
+ * circuit breaker at all -- a new deployment that never reaches healthy either reporting a {@code
+ * FAILED} rolloutState, or (with {@code rollback=true}) actually reverting the service back to the
+ * last healthy task definition -- or does a permanently-crashing revision just hang forever with no
+ * failure signal? {@code WaitForEcsNativeServiceDeploymentTask} needs to observe a rollback as a
+ * terminal (failed) stage outcome for ecs-native's circuit-breaker-rollback feature to be testable
+ * against MiniStack at all.
  *
  * <p>This test is deliberately verbose (see the {@code System.out.println} calls) so that whatever
  * happens -- pass, fail, or an exception from an AWS API MiniStack doesn't support -- the raw CI
@@ -99,6 +110,7 @@ class MiniStackEcsRolloutSpikeTest {
       new MiniStackContainer(MINISTACK_PR_1779_PREVIEW_IMAGE).withRealInfrastructure();
 
   private static EcsClient ecsClient;
+  private static String subnetId;
 
   @BeforeAll
   static void setupClients() {
@@ -126,7 +138,7 @@ class MiniStackEcsRolloutSpikeTest {
             .createVpc(CreateVpcRequest.builder().cidrBlock("10.0.0.0/16").build())
             .vpc()
             .vpcId();
-    String subnetId =
+    subnetId =
         ec2Client
             .createSubnet(
                 CreateSubnetRequest.builder().vpcId(vpcId).cidrBlock("10.0.1.0/24").build())
@@ -137,36 +149,22 @@ class MiniStackEcsRolloutSpikeTest {
     ecsClient.createCluster(CreateClusterRequest.builder().clusterName(CLUSTER_NAME).build());
     System.out.println("[spike] created cluster=" + CLUSTER_NAME);
 
-    String initialTaskDefArn = registerTaskDefinition("sleep 600");
+    String initialTaskDefArn = registerTaskDefinition("spike-task", "sh", "-c", "sleep 600");
     System.out.println("[spike] registered initial task definition=" + initialTaskDefArn);
 
-    Service service =
-        ecsClient
-            .createService(
-                CreateServiceRequest.builder()
-                    .cluster(CLUSTER_NAME)
-                    .serviceName(SERVICE_NAME)
-                    .taskDefinition(initialTaskDefArn)
-                    .desiredCount(1)
-                    .launchType(LaunchType.FARGATE)
-                    .networkConfiguration(
-                        NetworkConfiguration.builder()
-                            .awsvpcConfiguration(
-                                AwsVpcConfiguration.builder()
-                                    .subnets(subnetId)
-                                    .assignPublicIp(AssignPublicIp.ENABLED)
-                                    .build())
-                            .build())
-                    .build())
-            .service();
+    Service service = createFargateService(SERVICE_NAME, initialTaskDefArn, null);
     System.out.println("[spike] createService returned: " + service);
   }
 
   private static String registerTaskDefinition(String sleepCommand) {
+    return registerTaskDefinition("spike-task", "sh", "-c", sleepCommand);
+  }
+
+  private static String registerTaskDefinition(String family, String... command) {
     RegisterTaskDefinitionResponse response =
         ecsClient.registerTaskDefinition(
             RegisterTaskDefinitionRequest.builder()
-                .family("spike-task")
+                .family(family)
                 .networkMode(NetworkMode.AWSVPC)
                 .requiresCompatibilities(Compatibility.FARGATE)
                 .cpu("256")
@@ -175,10 +173,33 @@ class MiniStackEcsRolloutSpikeTest {
                     ContainerDefinition.builder()
                         .name("app")
                         .image("busybox:latest")
-                        .command("sh", "-c", sleepCommand)
+                        .command(command)
                         .build())
                 .build());
     return response.taskDefinition().taskDefinitionArn();
+  }
+
+  private static Service createFargateService(
+      String serviceName, String taskDefArn, DeploymentConfiguration deploymentConfiguration) {
+    CreateServiceRequest.Builder request =
+        CreateServiceRequest.builder()
+            .cluster(CLUSTER_NAME)
+            .serviceName(serviceName)
+            .taskDefinition(taskDefArn)
+            .desiredCount(1)
+            .launchType(LaunchType.FARGATE)
+            .networkConfiguration(
+                NetworkConfiguration.builder()
+                    .awsvpcConfiguration(
+                        AwsVpcConfiguration.builder()
+                            .subnets(subnetId)
+                            .assignPublicIp(AssignPublicIp.ENABLED)
+                            .build())
+                    .build());
+    if (deploymentConfiguration != null) {
+      request.deploymentConfiguration(deploymentConfiguration);
+    }
+    return ecsClient.createService(request.build()).service();
   }
 
   /**
@@ -188,7 +209,8 @@ class MiniStackEcsRolloutSpikeTest {
    */
   @Test
   void serviceReachesDesiredRunningCountViaRealContainerExecution() {
-    Service finalState = pollUntil("initial rollout to running", s -> s.runningCount() >= 1);
+    Service finalState =
+        pollUntil(SERVICE_NAME, "initial rollout to running", s -> s.runningCount() >= 1);
 
     System.out.println("[spike] phase 1 final state: " + finalState);
     assertThat(finalState.runningCount())
@@ -205,7 +227,7 @@ class MiniStackEcsRolloutSpikeTest {
   @Test
   void updateServiceProducesAnObservableRolloutToCompletion() {
     // Make sure phase 1's service exists and has settled before mutating it.
-    pollUntil("pre-update settle", s -> s.runningCount() >= 1);
+    pollUntil(SERVICE_NAME, "pre-update settle", s -> s.runningCount() >= 1);
 
     String newTaskDefArn = registerTaskDefinition("sleep 601");
     System.out.println("[spike] registered updated task definition=" + newTaskDefArn);
@@ -220,6 +242,7 @@ class MiniStackEcsRolloutSpikeTest {
 
     Service finalState =
         pollUntil(
+            SERVICE_NAME,
             "post-update rollout",
             s ->
                 s.deployments().size() == 1
@@ -236,7 +259,65 @@ class MiniStackEcsRolloutSpikeTest {
     assertThat(onlyDeployment.rolloutStateAsString()).isEqualTo("COMPLETED");
   }
 
-  private static Service pollUntil(String label, java.util.function.Predicate<Service> done) {
+  /**
+   * Phase 3: does MiniStack simulate the ECS deployment circuit breaker at all? Creates its own
+   * service (independent of phases 1-2, but sharing the cluster/vpc/subnet from {@code
+   * setupClients()}) on a healthy revision, then updates it to a revision whose only container
+   * exits immediately -- with {@code deploymentCircuitBreaker.rollback=true} -- and watches for
+   * either a {@code FAILED} rolloutState or an actual rollback to the healthy revision. A timeout
+   * here (no failure signal, ever) is itself the answer: circuit-breaker rollback isn't simulated.
+   */
+  @Test
+  void updateServiceToACrashingRevisionWithCircuitBreakerEitherFailsOrRollsBack() {
+    String serviceName = "spike-service-circuit-breaker";
+    String healthyTaskDefArn = registerTaskDefinition("spike-cb-task", "sh", "-c", "sleep 600");
+    System.out.println("[spike][cb] registered healthy task definition=" + healthyTaskDefArn);
+
+    Service created = createFargateService(serviceName, healthyTaskDefArn, null);
+    System.out.println("[spike][cb] createService returned: " + created);
+    pollUntil(serviceName, "cb pre-update settle", s -> s.runningCount() >= 1);
+
+    String crashingTaskDefArn = registerTaskDefinition("spike-cb-task", "sh", "-c", "exit 1");
+    System.out.println("[spike][cb] registered crashing task definition=" + crashingTaskDefArn);
+
+    ecsClient.updateService(
+        UpdateServiceRequest.builder()
+            .cluster(CLUSTER_NAME)
+            .service(serviceName)
+            .taskDefinition(crashingTaskDefArn)
+            .deploymentConfiguration(
+                DeploymentConfiguration.builder()
+                    .deploymentCircuitBreaker(
+                        DeploymentCircuitBreaker.builder().enable(true).rollback(true).build())
+                    .build())
+            .build());
+    System.out.println("[spike][cb] updateService (crashing revision) issued, polling...");
+
+    Service finalState =
+        pollUntil(
+            serviceName,
+            "cb rollout outcome",
+            s ->
+                s.deployments().stream().anyMatch(d -> "FAILED".equals(d.rolloutStateAsString()))
+                    || (s.deployments().size() == 1
+                        && healthyTaskDefArn.equals(s.deployments().get(0).taskDefinition())
+                        && "COMPLETED".equals(s.deployments().get(0).rolloutStateAsString())));
+
+    System.out.println("[spike][cb] phase 3 final state: " + finalState);
+    boolean reportedFailed =
+        finalState.deployments().stream().anyMatch(d -> "FAILED".equals(d.rolloutStateAsString()));
+    boolean rolledBack =
+        finalState.deployments().size() == 1
+            && healthyTaskDefArn.equals(finalState.deployments().get(0).taskDefinition());
+    System.out.println(
+        "[spike][cb] reportedFailed=" + reportedFailed + " rolledBack=" + rolledBack);
+    assertThat(reportedFailed || rolledBack)
+        .as("expected either a FAILED rolloutState or an actual rollback to the healthy revision")
+        .isTrue();
+  }
+
+  private static Service pollUntil(
+      String serviceName, String label, java.util.function.Predicate<Service> done) {
     Instant deadline = Instant.now().plus(POLL_TIMEOUT);
     Service last = null;
     while (Instant.now().isBefore(deadline)) {
@@ -245,7 +326,7 @@ class MiniStackEcsRolloutSpikeTest {
               .describeServices(
                   DescribeServicesRequest.builder()
                       .cluster(CLUSTER_NAME)
-                      .services(SERVICE_NAME)
+                      .services(serviceName)
                       .build())
               .services();
       last = services.isEmpty() ? null : services.get(0);
