@@ -23,6 +23,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
+import com.netflix.spinnaker.clouddriver.data.task.Task;
+import com.netflix.spinnaker.clouddriver.data.task.TaskRepository;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
@@ -109,6 +111,10 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
 
   @BeforeAll
   static void setupOnce() {
+    // operate() calls updateTaskStatus(), which reads this thread-local -- unset, that's an
+    // immediate NPE regardless of which branch of operate() runs.
+    TaskRepository.threadLocalTask.set(mock(Task.class));
+
     StaticCredentialsProvider credentials =
         StaticCredentialsProvider.create(
             AwsBasicCredentials.create(ministack.getAccessKey(), ministack.getSecretKey()));
