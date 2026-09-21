@@ -48,13 +48,14 @@ dependencies {
   testImplementation "org.spockframework:spock-core"
   testImplementation "org.spockframework:spock-spring"
   testImplementation "org.springframework.boot:spring-boot-starter-test"
-  testImplementation "org.testcontainers:testcontainers"
-  testImplementation "org.ministack:testcontainers-ministack"
   integrationImplementation 'org.springframework.boot:spring-boot-starter-security'
 
   integrationImplementation project(":clouddriver-web")
   integrationImplementation "org.springframework:spring-test"
   integrationImplementation "org.testcontainers:testcontainers-mysql"
+  integrationImplementation "org.testcontainers:testcontainers"
+  integrationImplementation "org.testcontainers:junit-jupiter"
+  integrationImplementation "org.ministack:testcontainers-ministack"
   integrationImplementation "com.mysql:mysql-connector-j"
   integrationImplementation sourceSets.test.output
   integrationImplementation sourceSets.main.output
