@@ -51,7 +51,6 @@ class EcsNativeCreateServerGroupAtomicOperationConverterSpec extends Specificati
       capacity          : new ServerGroup.Capacity(0, 2, 1),
       availabilityZones : ['us-west-1': ['us-west-1a']],
       region            : 'us-west-1',
-      inPlaceUpdate     : true,
       deploymentStrategy: 'BLUE_GREEN',
       credentials       : 'test'
     ]
@@ -63,7 +62,6 @@ class EcsNativeCreateServerGroupAtomicOperationConverterSpec extends Specificati
 
     then:
     description instanceof EcsNativeCreateServerGroupDescription
-    description.isInPlaceUpdate()
     description.getDeploymentStrategy() == 'BLUE_GREEN'
 
     when:

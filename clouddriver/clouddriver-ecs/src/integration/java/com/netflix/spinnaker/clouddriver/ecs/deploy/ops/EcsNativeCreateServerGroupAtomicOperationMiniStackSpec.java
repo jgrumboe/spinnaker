@@ -99,7 +99,14 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
 
   private static final String REGION = "us-east-1";
   private static final String CLUSTER_NAME = "ecs-native-happy-path-cluster";
-  private static final String SERVICE_NAME = "mygreatapp-stack1-details2-v011";
+  // ecs-native uses a fixed, unversioned service name equal to the moniker family name
+  // (app-stack-detail, no -vNNN suffix). The application/stack/detail set on the description below
+  // must resolve to exactly this name so operate() finds the pre-created service and rolls it in
+  // place via UpdateService.
+  private static final String APPLICATION = "mygreatapp";
+  private static final String STACK = "stack1";
+  private static final String FREE_FORM_DETAILS = "details2";
+  private static final String SERVICE_NAME = APPLICATION + "-" + STACK + "-" + FREE_FORM_DETAILS;
   private static final Duration POLL_TIMEOUT = Duration.ofSeconds(120);
   private static final Duration POLL_INTERVAL = Duration.ofSeconds(3);
 
@@ -221,7 +228,12 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
   @Test
   void rollingEcsNativeInPlaceUpdateAgainstARealEcsCompatibleBackendActuallyCompletes() {
     EcsNativeCreateServerGroupDescription description = new EcsNativeCreateServerGroupDescription();
-    description.setInPlaceUpdate(true);
+    // ecs-native is always in-place: operate() computes the fixed service name from the moniker
+    // (app-stack-detail) and rolls the pre-created service via UpdateService -- no inPlaceUpdate
+    // flag, no source block needed for detection.
+    description.setApplication(APPLICATION);
+    description.setStack(STACK);
+    description.setFreeFormDetails(FREE_FORM_DETAILS);
     description.setEcsClusterName(CLUSTER_NAME);
     description.setDockerImageAddress("busybox:latest");
     description.setLaunchType("FARGATE");
@@ -231,8 +243,9 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
     description.setDeploymentStrategy("ROLLING");
     description.setMinimumHealthyPercent(100);
     description.setMaximumPercent(200);
+    // No availability-zone map is set here, so getRegion() falls back to the source region; that's
+    // the only reason the source is present.
     CreateServerGroupDescription.Source source = new CreateServerGroupDescription.Source();
-    source.setAsgName(SERVICE_NAME);
     source.setRegion(REGION);
     description.setSource(source);
 

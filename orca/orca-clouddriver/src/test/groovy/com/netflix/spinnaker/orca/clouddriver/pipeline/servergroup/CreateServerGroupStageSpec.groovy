@@ -174,6 +174,73 @@ class CreateServerGroupStageSpec extends Specification {
     null          | false
   }
 
+  @Unroll
+  def "ecs-native rejects a non-None Spinnaker deployment strategy (strategy=#strategy)"() {
+    given:
+    def featuresService = Mock(FeaturesService) {
+      areEntityTagsAvailable() >> false
+    }
+    def dynamicConfigService = Mock(DynamicConfigService)
+    def stageForProvider = new CreateServerGroupStage(
+        featuresService,
+        new RollbackClusterStage(),
+        new DestroyServerGroupStage(dynamicConfigService),
+        dynamicConfigService)
+
+    def stage = stage {
+      context = [
+        "application"  : "myapplication",
+        "account"      : "test",
+        "cloudProvider": "ecs-native",
+        "strategy"     : strategy,
+      ]
+    }
+
+    when:
+    stageForProvider.basicTasks(stage)
+
+    then:
+    def e = thrown(IllegalStateException)
+    e.message.contains("ecs-native")
+    e.message.contains("None")
+
+    where:
+    strategy << ["redblack", "rollingredblack", "highlander"]
+  }
+
+  @Unroll
+  def "ecs-native accepts the None strategy (strategy=#strategy)"() {
+    given:
+    def featuresService = Mock(FeaturesService) {
+      areEntityTagsAvailable() >> false
+    }
+    def dynamicConfigService = Mock(DynamicConfigService)
+    def stageForProvider = new CreateServerGroupStage(
+        featuresService,
+        new RollbackClusterStage(),
+        new DestroyServerGroupStage(dynamicConfigService),
+        dynamicConfigService)
+
+    def stage = stage {
+      context = [
+        "application"  : "myapplication",
+        "account"      : "test",
+        "cloudProvider": "ecs-native",
+        "strategy"     : strategy,
+      ]
+    }
+
+    when:
+    def taskNames = stageForProvider.basicTasks(stage)*.name
+
+    then:
+    notThrown(IllegalStateException)
+    taskNames.contains("waitForEcsNativeServiceDeployment")
+
+    where:
+    strategy << [null, "", "none"]
+  }
+
   Map expectedRollbackContext(Map<String, Object> additionalRollbackContext) {
     return [
       regions                  : ["us-west-1"],

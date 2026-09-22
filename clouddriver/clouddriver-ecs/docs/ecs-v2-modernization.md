@@ -210,20 +210,22 @@ deck:
      (min/max %, circuit breaker + rollback) and can force a new rolling
      deployment. Spock spec covers the configured and no-config paths.
    - 2c (done, standalone/no-touch): the `ecs-native` create path now supports a
-     durable-service deploy. `EcsNativeCreateServerGroupAtomicOperation`
-     overrides `operate()`: when the opt-in `inPlaceUpdate` flag is set and a
-     deploy source exists, it rolls that existing service in place via native
-     `UpdateService` (reusing the shared, `protected` `registerTaskDefinition`
-     for a new revision) instead of creating a new versioned service; the first
-     deploy (no source) still delegates to `super.operate()`. Implemented as a
-     subclass, so the shared create operation is untouched. Role inference and
-     deployment-result building are re-derived in the subclass (the originals
-     are `private`).
-   - Important constraint: `inPlaceUpdate` must be paired with a no-op / native
-     deployment strategy. It must NOT be combined with red/black, which would
-     disable and destroy the service that was just updated. Wiring a native
-     (strategy=none) deploy in orca/deck is the follow-up that makes this safe
-     to select in the UI.
+     durable-service deploy, and is **always in-place** (no opt-in flag).
+     `EcsNativeCreateServerGroupAtomicOperation` overrides `operate()`: it
+     computes the fixed (unversioned) service name and asks ECS via
+     `DescribeServices` whether that service already exists; if so it rolls it in
+     place via native `UpdateService` (reusing the shared, `protected`
+     `registerTaskDefinition` for a new revision) instead of creating a new
+     versioned service. Only the first-ever deploy (service absent) delegates to
+     `super.operate()`. Implemented as a subclass, so the shared create operation
+     is untouched. Role inference and deployment-result building are re-derived in
+     the subclass (the originals are `private`).
+   - Important constraint: the **Spinnaker** deployment strategy must be `None`
+     for ecs-native (the **ECS** deployment strategy — `ROLLING` / `BLUE_GREEN` in
+     `deploymentStrategy` — drives the rollout). A red/black Spinnaker strategy
+     would disable and destroy the service that was just updated. Deck locks the
+     picker to `None` and orca's `CreateServerGroupStage.basicTasks` rejects any
+     non-`None` strategy for `ecs-native` with `IllegalStateException`.
    - SDK v2 upgrade.
 3. **Observability (done, compiler-verified):** clouddriver gets a standalone,
    additive `EcsNativeServiceDeploymentController` (`GET
@@ -296,14 +298,16 @@ creating anything), so `getAmazonEcsClient()`, `buildDeploymentResult()`, and
 anything else that calls the inherited `getRegion()` threw a
 `NullPointerException` for any in-place-update request that didn't happen to
 also set availability zones. Fixed with a `getRegion()` override in
-`EcsNativeCreateServerGroupAtomicOperation`, scoped strictly to
-`isInPlaceUpdate()`, that resolves from `description.getSource().getRegion()`
-instead -- always populated whenever `resolveExistingServiceName()` finds an
-existing service, since both come from the same deploy-stage source block.
-Deliberately not applied to normal clone flows, in-place or not, where
-`source.region` can legitimately differ from the destination
-`availabilityZones` region (e.g. a cross-region clone). All 24 `*EcsNative*`
-tests in `clouddriver-ecs` pass after the fix.
+`EcsNativeCreateServerGroupAtomicOperation` that is **flag-independent**: it
+prefers the availability-zone-derived region (the normal create case), and only
+falls back to `description.getSource().getRegion()` when the availability-zone
+map is absent -- which is exactly the in-place-redeploy case that would
+otherwise NPE. (Originally scoped to an `isInPlaceUpdate()` flag; that flag has
+since been removed because ecs-native is always in-place, so the override no
+longer references it.) Deliberately does not clobber the AZ-derived region for
+normal clone flows, where `source.region` can legitimately differ from the
+destination `availabilityZones` region (e.g. a cross-region clone). The
+`*EcsNative*` tests in `clouddriver-ecs` pass after the fix.
 
 `orca-clouddriver`'s `*EcsNative*` tests have not yet been run (only compiled)
 -- run `./gradlew ":orca:orca-clouddriver:test" --tests '*EcsNative*'` to

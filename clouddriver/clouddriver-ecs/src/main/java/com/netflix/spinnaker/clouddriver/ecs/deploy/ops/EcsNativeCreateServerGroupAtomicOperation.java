@@ -20,7 +20,6 @@ import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.AssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName;
@@ -39,6 +38,8 @@ import software.amazon.awssdk.services.ecs.model.CreateServiceRequest;
 import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
 import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
+import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
+import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse;
 import software.amazon.awssdk.services.ecs.model.LoadBalancer;
 import software.amazon.awssdk.services.ecs.model.Service;
 import software.amazon.awssdk.services.ecs.model.TaskDefinition;
@@ -55,13 +56,13 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  *       deployment alarms, and the {@code ROLLING}/{@code BLUE_GREEN} strategy with its optional
  *       ALB traffic-shift config) is configurable rather than hard-coded (see {@link
  *       #makeServiceRequest}).
- *   <li>When {@link EcsNativeCreateServerGroupDescription#isInPlaceUpdate()} is set and a source
- *       server group exists, the redeploy rolls that durable service in place via a native {@code
- *       UpdateService} instead of creating a new versioned service (see {@link #operate}).
- *   <li>The initial deploy creates a service with a fixed, unversioned name (the cluster/family
- *       name, e.g. {@code app-stack-detail}) with no {@code -vNNN} suffix, since ecs-native keeps a
- *       single durable service and rolls new revisions in place (see {@link
- *       #buildEcsServerGroupName}).
+ *   <li>ecs-native always deploys to a single durable service in place: {@link #operate} computes
+ *       the fixed service name and, if that service already exists, rolls it via a native {@code
+ *       UpdateService} instead of creating a new versioned service. Only the very first deploy
+ *       (service does not exist yet) falls through to {@code CreateService}.
+ *   <li>The service uses a fixed, unversioned name (the cluster/family name, e.g. {@code
+ *       app-stack-detail}) with no {@code -vNNN} suffix, since ecs-native keeps a single durable
+ *       service and rolls new revisions in place (see {@link #buildEcsServerGroupName}).
  * </ol>
  *
  * <p>The shared {@link CreateServerGroupAtomicOperation} is not modified; this operation is a
@@ -76,17 +77,14 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
 
   @Override
   public DeploymentResult operate(List priorOutputs) {
-    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
-
-    if (nativeDescription.isInPlaceUpdate()) {
-      String existingServiceName = resolveExistingServiceName();
-      if (existingServiceName != null) {
-        return updateExistingServiceInPlace(existingServiceName);
-      }
-      updateTaskStatus(
-          "No existing ecs-native service found for in-place update; creating the initial durable service.");
+    // ecs-native is always in-place: there is one durable ECS service per cluster, named by the
+    // fixed (unversioned) family name. If that service already exists, roll it via a native
+    // UpdateService; only the first-ever deploy (service absent) falls through to CreateService.
+    String existingServiceName = resolveExistingServiceName();
+    if (existingServiceName != null) {
+      return updateExistingServiceInPlace(existingServiceName);
     }
-
+    updateTaskStatus("No existing ecs-native service found; creating the initial durable service.");
     return super.operate(priorOutputs);
   }
 
@@ -122,13 +120,28 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     return new EcsServerGroupName(moniker, true);
   }
 
-  /** The service to roll in place, taken from the deploy source; {@code null} on first deploy. */
+  /**
+   * Returns the name of the existing durable ecs-native service to roll in place, or {@code null}
+   * if it does not exist yet (first deploy). ecs-native uses a fixed, unversioned service name, so
+   * we compute that name and ask ECS whether such a service is currently ACTIVE/DRAINING in the
+   * cluster -- independent of any deploy-stage source block. This is what makes every ecs-native
+   * redeploy an in-place UpdateService rather than a colliding CreateService.
+   */
   protected String resolveExistingServiceName() {
-    CreateServerGroupDescription.Source source = description.getSource();
-    if (source != null && StringUtils.isNotBlank(source.getAsgName())) {
-      return source.getAsgName();
-    }
-    return null;
+    EcsClient ecs = getAmazonEcsClient();
+    String fixedServiceName = buildEcsServerGroupName(ecs, null).getServiceName();
+
+    DescribeServicesRequest request =
+        DescribeServicesRequest.builder()
+            .cluster(description.getEcsClusterName())
+            .services(fixedServiceName)
+            .build();
+    DescribeServicesResponse result = ecs.describeServices(request);
+
+    // A service that has been deleted lingers as INACTIVE; treat only ACTIVE/DRAINING as existing.
+    boolean exists =
+        !result.services().isEmpty() && !"INACTIVE".equals(result.services().get(0).status());
+    return exists ? fixedServiceName : null;
   }
 
   private DeploymentResult updateExistingServiceInPlace(String existingServiceName) {
@@ -364,23 +377,20 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
   /**
    * The base {@code CreateServerGroupDescription} overrides {@code getRegion()} to derive it from
    * {@code getAvailabilityZones()} unconditionally -- there's no way to reach the plain {@code
-   * region} field on {@code AbstractECSDescription} once that override is in the hierarchy, since
-   * every {@code getRegion()} call (however it's dispatched) resolves to the same override. That's
-   * fine for a normal create, but the in-place-update path here never touches availability zones,
-   * so that map is typically unset and the override throws a {@code NullPointerException}.
+   * region} field on {@code AbstractECSDescription} once that override is in the hierarchy. That's
+   * fine for a normal deploy (availability zones are set), but an in-place redeploy triggered
+   * without an availability-zone map would make the base override throw a {@code
+   * NullPointerException}.
    *
-   * <p>Scoped strictly to {@link EcsNativeCreateServerGroupDescription#isInPlaceUpdate()}: the
-   * source block's region ({@code source.asgName}/{@code source.region}) is always populated
-   * whenever {@link #resolveExistingServiceName()} finds an existing service, since both come from
-   * the same deploy-stage source block. Deliberately not applied to normal clone flows (in-place or
-   * not), where {@code source.region} can legitimately differ from the destination {@code
-   * availabilityZones} region (e.g. a cross-region clone) -- only {@code inPlaceUpdate} changes the
-   * semantics enough to justify preferring the source's region.
+   * <p>This override is defensive and flag-independent: prefer the availability-zone-derived region
+   * (the normal case), and only fall back to the deploy-stage source region when the AZ map is
+   * absent -- which is exactly the redeploy-with-source case that would otherwise NPE.
    */
   @Override
   protected String getRegion() {
-    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
-    if (nativeDescription.isInPlaceUpdate()
+    boolean hasAvailabilityZones =
+        description.getAvailabilityZones() != null && !description.getAvailabilityZones().isEmpty();
+    if (!hasAvailabilityZones
         && description.getSource() != null
         && StringUtils.isNotBlank(description.getSource().getRegion())) {
       return description.getSource().getRegion();

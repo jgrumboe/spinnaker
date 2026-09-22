@@ -99,6 +99,19 @@ class CreateServerGroupStage extends AbstractDeployStrategyStage implements Forc
     // provider are unaffected. Runs last, after the cache refresh, so deploy.server.groups is set and
     // the service is cached for the task's account/region/serverGroupName resolution.
     if (ECS_NATIVE_CLOUD_PROVIDER == getCloudProvider(stage)) {
+      // ecs-native deploys to a single durable ECS service in place and lets ECS's own deployment
+      // strategy (ROLLING / BLUE_GREEN) drive the rollout. A Spinnaker red/black-style strategy
+      // would try to create a new versioned server group and disable/destroy the old one, which
+      // either collides with the fixed service name or runs as inert no-ops. Deck already restricts
+      // ecs-native to the "None" strategy; this is the server-side guard for hand-edited pipelines.
+      Strategy strategy = Strategy.fromStrategyKey(stage.context.strategy as String)
+      if (strategy != Strategy.NONE) {
+        throw new IllegalStateException(
+          "ecs-native deploys must use the 'None' deployment strategy (ECS's own ROLLING/BLUE_GREEN " +
+            "strategy drives the rollout); got '${strategy.key}'. Remove the Spinnaker deployment strategy " +
+            "from this stage, or use the classic 'ecs' provider for red/black deploys.")
+      }
+
       tasks << TaskNode.task("waitForEcsNativeServiceDeployment", WaitForEcsNativeServiceDeploymentTask)
     }
 

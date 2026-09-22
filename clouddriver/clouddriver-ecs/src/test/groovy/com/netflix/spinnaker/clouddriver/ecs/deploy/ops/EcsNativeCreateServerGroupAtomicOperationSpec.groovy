@@ -22,6 +22,8 @@ import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateS
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsDefaultNamer
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest
+import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest
+import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
 import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.TaskDefinition
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
@@ -228,34 +230,70 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     thrown(IllegalArgumentException)
   }
 
-  def 'resolveExistingServiceName returns the source service when present, otherwise null'() {
+  def 'resolveExistingServiceName returns the fixed service name when that ECS service already exists'() {
     given:
-    def withSource = new EcsNativeCreateServerGroupDescription(inPlaceUpdate: true)
-    withSource.setSource(new CreateServerGroupDescription.Source(asgName: 'myapp-stack-v003'))
-    def withoutSource = new EcsNativeCreateServerGroupDescription(inPlaceUpdate: true)
+    // ecs-native computes the fixed (unversioned) name and asks ECS whether it exists.
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'myapp', stack: 'stack', freeFormDetails: 'web', ecsClusterName: 'my-cluster')
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
 
-    expect:
-    new EcsNativeCreateServerGroupAtomicOperation(withSource).resolveExistingServiceName() == 'myapp-stack-v003'
-    new EcsNativeCreateServerGroupAtomicOperation(withoutSource).resolveExistingServiceName() == null
+    when:
+    def resolved = operation.resolveExistingServiceName()
+
+    then:
+    1 * ecs.describeServices({ DescribeServicesRequest req ->
+      req.cluster() == 'my-cluster' && req.services() == ['myapp-stack-web']
+    } as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName('myapp-stack-web').status('ACTIVE').build())
+        .build()
+    resolved == 'myapp-stack-web'
   }
 
-  def 'should roll the existing service in place when inPlaceUpdate is set and a source exists'() {
+  def 'resolveExistingServiceName returns null when the service does not exist (first deploy) or is INACTIVE'() {
     given:
-    def serviceName = 'mygreatapp-stack1-details2-v011'
     def description = new EcsNativeCreateServerGroupDescription(
-        inPlaceUpdate: true,
+        application: 'myapp', stack: 'stack', freeFormDetails: 'web', ecsClusterName: 'my-cluster')
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
+
+    when:
+    def resolved = operation.resolveExistingServiceName()
+
+    then:
+    1 * ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(services)
+        .build()
+    resolved == expected
+
+    where:
+    services                                                                              || expected
+    []                                                                                    || null
+    [Service.builder().serviceName('myapp-stack-web').status('INACTIVE').build()]         || null
+    [Service.builder().serviceName('myapp-stack-web').status('ACTIVE').build()]           || 'myapp-stack-web'
+  }
+
+  def 'operate always rolls the existing durable service in place via UpdateService (no CreateService)'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2'
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
         ecsClusterName: 'my-cluster',
         minimumHealthyPercent: 50,
         maximumPercent: 150,
         enableDeploymentCircuitBreaker: true,
-        deploymentCircuitBreakerRollback: true)
-    description.setSource(new CreateServerGroupDescription.Source(asgName: serviceName, region: 'us-west-1'))
+        deploymentCircuitBreakerRollback: true,
+        availabilityZones: ['us-west-1': ['us-west-1a']])
 
     def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
     operation.getAmazonEcsClient() >> ecs
     operation.getCredentials() >> Mock(AmazonCredentials)
     operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
     operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    // The fixed-name service already exists -> in-place update.
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .build()
 
     when:
     def result = operation.operate([])
@@ -275,15 +313,5 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
         .build()
     0 * ecs.createService(_)
     result.serverGroupNameByRegion == ['us-west-1': serviceName]
-  }
-
-  def 'getRegion resolves from the source region during in-place update, without touching availabilityZones'() {
-    given:
-    def description = new EcsNativeCreateServerGroupDescription(inPlaceUpdate: true)
-    description.setSource(new CreateServerGroupDescription.Source(asgName: 'myapp-v001', region: 'eu-west-1'))
-    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
-
-    expect:
-    operation.getRegion() == 'eu-west-1'
   }
 }

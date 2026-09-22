@@ -68,7 +68,8 @@ describe('NativeDeploymentSettings', () => {
       />,
     );
 
-    expect(wrapper.find('[data-test-id="NativeDeployment.inPlaceUpdate"]').exists()).toBe(true);
+    // ecs-native is always in-place now; the "Redeploy in place" toggle was removed.
+    expect(wrapper.find('[data-test-id="NativeDeployment.inPlaceUpdate"]').exists()).toBe(false);
     expect(wrapper.find('[data-test-id="NativeDeployment.deploymentStrategy"]').prop('value')).toBe('ROLLING');
     // Bake time is valid for the ECS deployment controller regardless of strategy, so it shows for ROLLING too.
     expect(wrapper.find('[data-test-id="NativeDeployment.bakeTimeInMinutes"]').exists()).toBe(true);

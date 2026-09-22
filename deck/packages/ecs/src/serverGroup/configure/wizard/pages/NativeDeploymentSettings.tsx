@@ -54,28 +54,6 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
         <>
           <div className="form-group">
             <div className="col-md-5 sm-label-right">
-              Redeploy in place <HelpField id="ecs.native.inPlaceUpdate" />
-            </div>
-            <div className="col-md-3">
-              <input
-                aria-label="Redeploy in place"
-                checked={!!command.inPlaceUpdate}
-                data-test-id="NativeDeployment.inPlaceUpdate"
-                onChange={(event) => onFieldChange('inPlaceUpdate', event.target.checked)}
-                type="checkbox"
-              />
-            </div>
-            <div className="col-md-12">
-              <span className="help-block" style={{ marginLeft: '0' }}>
-                Rolls the existing durable service in place via a native <code>UpdateService</code> instead of creating
-                a new versioned service. The first deploy, or a deploy with no source, still creates the service. Do not
-                combine with a red/black deployment strategy.
-              </span>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <div className="col-md-5 sm-label-right">
               Circuit breaker rollback <HelpField id="ecs.native.deploymentCircuitBreakerRollback" />
             </div>
             <div className="col-md-3">
