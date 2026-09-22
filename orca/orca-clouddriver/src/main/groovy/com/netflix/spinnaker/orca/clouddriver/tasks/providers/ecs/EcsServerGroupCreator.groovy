@@ -50,7 +50,16 @@ import com.netflix.spinnaker.orca.jackson.OrcaObjectMapper
 @Slf4j
 @Component
 class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAware {
-  final private OortService oortService
+  // Must not be `private`: EcsNativeServerGroupCreator subclasses this creator, and this field is
+  // dereferenced inside the fetchAndParseArtifact closure (which must remain a closure -- it is a
+  // Supplier handed to RetrySupport.retry). Groovy resolves properties referenced in a closure
+  // through the MetaObjectProtocol against the *runtime* class, which cannot see a private
+  // superclass field, so from the subclass it fails with
+  // "MissingPropertyException: No such property: oortService". `protected` keeps it visible to
+  // subclasses while still hidden from unrelated classes. (Other previously-fragile calls,
+  // getImageAddressFromDescription and coerceArtifactToList, were instead moved out of closures into
+  // plain loops so they bind statically and can stay private.)
+  protected final OortService oortService
   private final ContextParameterProcessor contextParameterProcessor
   private static final ThreadLocal<Yaml> yamlParser =
       ThreadLocal.withInitial({ -> YamlHelper.newYamlSafeConstructor() })
@@ -91,12 +100,17 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
               retrySupport.retry(
                   fetchAndParseArtifact(operation.resolvedTaskDefinitionArtifact), 10, Duration.ofMillis(200), true)
 
-          List<Map<Object, Object>> unevaluatedArtifact =
-              StreamSupport.stream(rawArtifact.spliterator(), false)
-                  .filter(Objects.&nonNull)
-                  .map(this.&coerceArtifactToList)
-                  .collect()
-                  .flatten()
+          // NOTE: a plain loop (not a stream with `this.&coerceArtifactToList`) is deliberate. A
+          // Groovy method pointer resolves through the MetaObjectProtocol against the *runtime*
+          // class, so from the EcsNativeServerGroupCreator subclass `this.&coerceArtifactToList`
+          // fails with MissingMethodException. Calling the method directly in a loop binds it
+          // statically to this class and works for both the base and subclass creators.
+          List<Map<Object, Object>> unevaluatedArtifact = []
+          for (Object artifact : rawArtifact) {
+            if (artifact != null) {
+              unevaluatedArtifact.addAll(coerceArtifactToList(artifact))
+            }
+          }
 
           Map<Object, Object> evaluatedArtifact = getSpelEvaluatedArtifact(unevaluatedArtifact, stage)
 
@@ -197,10 +211,15 @@ class EcsServerGroupCreator implements ServerGroupCreator, DeploymentDetailsAwar
     def containerToImageMap = [:]
 
     // each mapping should be in the shape { containerName: "", imageDescription: {}}
-    mappings.each{
-      def imageValue = (Map<String, Object>) it.imageDescription
+    // NOTE: a plain for-loop (not mappings.each { ... }) is deliberate. Inside a Groovy closure,
+    // calls to inherited instance methods resolve through the MetaObjectProtocol against the
+    // *runtime* class; from the EcsNativeServerGroupCreator subclass that dynamic lookup fails to
+    // match getImageAddressFromDescription and throws MissingMethodException. A for-loop body binds
+    // the call statically to this class, so it works for both the base and subclass creators.
+    for (Map<String, Object> mapping : mappings) {
+      def imageValue = (Map<String, Object>) mapping.imageDescription
       def resolvedImageAddress = getImageAddressFromDescription(imageValue, stage)
-      def name = (String) it.containerName
+      def name = (String) mapping.containerName
       containerToImageMap.put(name, resolvedImageAddress)
     }
     return containerToImageMap

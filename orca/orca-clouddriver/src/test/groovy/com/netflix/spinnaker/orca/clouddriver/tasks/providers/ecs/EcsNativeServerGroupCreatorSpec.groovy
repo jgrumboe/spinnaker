@@ -16,11 +16,19 @@
 
 package com.netflix.spinnaker.orca.clouddriver.tasks.providers.ecs
 
+import com.netflix.spinnaker.kork.artifacts.model.Artifact
 import com.netflix.spinnaker.kork.core.RetrySupport
+import com.netflix.spinnaker.orca.api.pipeline.models.ExecutionType
 import com.netflix.spinnaker.orca.clouddriver.OortService
+import com.netflix.spinnaker.orca.pipeline.model.PipelineExecutionImpl
 import com.netflix.spinnaker.orca.pipeline.util.ArtifactUtils
 import com.netflix.spinnaker.orca.pipeline.util.ContextParameterProcessor
+import okhttp3.MediaType
+import okhttp3.ResponseBody
+import retrofit2.mock.Calls
 import spock.lang.Specification
+
+import static com.netflix.spinnaker.orca.test.model.ExecutionBuilder.stage
 
 /**
  * EcsNativeServerGroupCreator overrides only getCloudProvider(), reusing all of
@@ -47,5 +55,49 @@ class EcsNativeServerGroupCreatorSpec extends Specification {
 
     expect:
     creator.getHealthProviderName() == Optional.of("ecs")
+  }
+
+  // Regression: getOperations()'s evaluateTaskDefinitionArtifactExpressions path dereferences the
+  // inherited oortService field inside the fetchAndParseArtifact closure. When that field was
+  // `private` on EcsServerGroupCreator, running from this subclass threw
+  // "MissingPropertyException: No such property: oortService for class: EcsNativeServerGroupCreator"
+  // because Groovy resolves closure property access against the runtime class, which can't see a
+  // private superclass field. This exercises the full path through the subclass to guard the fix.
+  def "resolves task definition artifact from the subclass without a MissingPropertyException"() {
+    given:
+    ArtifactUtils mockResolver = Stub(ArtifactUtils)
+    OortService oortService = Mock()
+    def creator = new EcsNativeServerGroupCreator(
+        mockResolver, oortService, new ContextParameterProcessor(), new RetrySupport())
+
+    def testArtifactId = "aaaa-bbbb-cccc-dddd"
+    def taskDefArtifact = [artifactId: testArtifactId]
+    Artifact resolvedArtifact = Artifact.builder().type('s3/object').name('s3://testfile.json').build()
+    mockResolver.getBoundArtifactForStage(_, testArtifactId, null) >> resolvedArtifact
+
+    def testDescription = [fromTrigger: "true", registry: "myregistry.io", repository: "myrepo", tag: "latest"]
+    def testMappings = [
+        [containerName: "web", imageDescription: testDescription],
+        [containerName: "logs", imageDescription: testDescription],
+    ]
+
+    def stage = stage {}
+    stage.execution = new PipelineExecutionImpl(ExecutionType.PIPELINE, 'ecs')
+    stage.context.credentials = "testUser"
+    stage.context.application = "ecs"
+    stage.context.useTaskDefinitionArtifact = true
+    stage.context.evaluateTaskDefinitionArtifactExpressions = true
+    stage.context.taskDefinitionArtifact = taskDefArtifact
+    stage.context.containerMappings = testMappings
+    stage.execution.trigger.parameters.put("tg", "bar")
+
+    when:
+    def operations = creator.getOperations(stage)
+
+    then:
+    1 * oortService.fetchArtifact(*_) >> Calls.response(
+        ResponseBody.create(MediaType.parse("application/json"), '{"foo": "${ parameters[\'tg\'] }"}'))
+    0 * oortService._
+    operations[0].createServerGroup.spelProcessedTaskDefinitionArtifact.toString() == "[foo:bar]"
   }
 }
