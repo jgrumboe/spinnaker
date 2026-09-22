@@ -15,6 +15,11 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
   const alarmNames: string[] = command.alarmNames || [];
   const strategy = command.deploymentStrategy || 'ROLLING';
   const isBlueGreen = strategy === 'BLUE_GREEN';
+  // When a load balancer is attached, AWS ECS requires the ALB traffic-shift config for BLUE_GREEN;
+  // it is only truly optional for a service with no load balancer. See ECS_NATIVE.md gotcha #7.
+  const hasLoadBalancer =
+    !!command.targetGroup || (command.targetGroupMappings || []).some((mapping) => !!mapping?.targetGroup);
+  const albShiftRequired = isBlueGreen && hasLoadBalancer;
 
   const toggleAlarm = (alarmName: string, checked: boolean) => {
     const next = checked ? [...alarmNames, alarmName] : alarmNames.filter((name) => name !== alarmName);
@@ -165,14 +170,22 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
             <>
               <div className="form-group">
                 <div className="sm-label-left">
-                  <b>ALB traffic shift (optional)</b> <HelpField id="ecs.native.blueGreenAdvanced" />
+                  <b>ALB traffic shift {albShiftRequired ? '(required)' : '(optional)'}</b>{' '}
+                  <HelpField id="ecs.native.blueGreenAdvanced" />
                 </div>
                 <div className="col-md-12">
-                  <span className="help-block" style={{ marginLeft: '0' }}>
-                    Blue/Green works without these: ECS still stands up a new task set and swaps it into the existing
-                    target group. Set all four only to route a separate ALB listener rule at the new task set for test
-                    traffic before shifting production traffic over.
-                  </span>
+                  {albShiftRequired ? (
+                    <span className="help-block" style={{ marginLeft: '0' }}>
+                      This service has a load balancer, so AWS ECS requires all four fields for a Blue/Green deploy and
+                      rejects it otherwise. They route a separate ALB listener rule at the new task set for test traffic
+                      before shifting production traffic over. To deploy without them, use the Rolling strategy.
+                    </span>
+                  ) : (
+                    <span className="help-block" style={{ marginLeft: '0' }}>
+                      Optional only because this service has no load balancer: ECS stands up a new task set with no
+                      traffic to shift. If you attach a load balancer, AWS ECS requires all four fields for Blue/Green.
+                    </span>
+                  )}
                 </div>
               </div>
 

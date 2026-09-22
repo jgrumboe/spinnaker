@@ -48,4 +48,56 @@ describe('validateEcsNativeDeployment', () => {
     expect(errors.productionListenerRule).toBeFalsy();
     expect(errors.testListenerRule).toBeFalsy();
   });
+
+  it('requires all four fields when BLUE_GREEN is used with a load balancer (targetGroup) and none are set', () => {
+    const errors = validateEcsNativeDeployment({
+      cloudProvider: 'ecs-native',
+      deploymentStrategy: 'BLUE_GREEN',
+      targetGroup: 'my-target-group',
+    } as any);
+    expect(errors.alternateTargetGroupArn).toBeTruthy();
+    expect(errors.productionListenerRule).toBeTruthy();
+    expect(errors.testListenerRule).toBeTruthy();
+    expect(errors.blueGreenRoleArn).toBeTruthy();
+  });
+
+  it('requires all four fields when BLUE_GREEN is used with a load balancer (targetGroupMappings) and none are set', () => {
+    const errors = validateEcsNativeDeployment({
+      cloudProvider: 'ecs-native',
+      deploymentStrategy: 'BLUE_GREEN',
+      targetGroupMappings: [{ targetGroup: 'my-target-group' }],
+    } as any);
+    expect(errors.alternateTargetGroupArn).toBeTruthy();
+    expect(errors.blueGreenRoleArn).toBeTruthy();
+  });
+
+  it('does not require the fields when BLUE_GREEN is used with no load balancer', () => {
+    const errors = validateEcsNativeDeployment({
+      cloudProvider: 'ecs-native',
+      deploymentStrategy: 'BLUE_GREEN',
+    } as any);
+    expect(errors).toEqual({});
+  });
+
+  it('does not require the fields for a load-balanced ROLLING deploy', () => {
+    const errors = validateEcsNativeDeployment({
+      cloudProvider: 'ecs-native',
+      deploymentStrategy: 'ROLLING',
+      targetGroup: 'my-target-group',
+    } as any);
+    expect(errors).toEqual({});
+  });
+
+  it('passes when BLUE_GREEN with a load balancer has all four fields set', () => {
+    const errors = validateEcsNativeDeployment({
+      cloudProvider: 'ecs-native',
+      deploymentStrategy: 'BLUE_GREEN',
+      targetGroup: 'my-target-group',
+      alternateTargetGroupArn: 'arn:alternate-target-group',
+      productionListenerRule: 'arn:production-rule',
+      testListenerRule: 'arn:test-rule',
+      blueGreenRoleArn: 'arn:aws:iam::123456789012:role/ecsBlueGreenRole',
+    } as any);
+    expect(errors).toEqual({});
+  });
 });

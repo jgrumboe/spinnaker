@@ -230,6 +230,94 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     thrown(IllegalArgumentException)
   }
 
+  def 'should reject blue/green on a load-balanced create when the ALB traffic-shift fields are missing'() {
+    given:
+    // BLUE_GREEN + a target group but none of the four ALB fields set. AWS ECS would reject this
+    // with a 400 ("advancedConfiguration field is required for all loadBalancers ..."); we fail
+    // fast with an actionable message instead.
+    def loadBalancingV2 = Mock(ElasticLoadBalancingV2Client)
+    loadBalancingV2.describeTargetGroups(_) >> DescribeTargetGroupsResponse.builder()
+        .targetGroups(TargetGroup.builder().targetGroupArn('arn:target-group').build())
+        .build()
+
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> 'my-target-group'
+    description.getContainerPort() >> 80
+    description.getAvailabilityZones() >> ['us-west-1': ['us-west-1a']]
+    description.getDeploymentStrategy() >> 'BLUE_GREEN'
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+    operation.amazonClientProvider = amazonClientProvider
+    amazonClientProvider.getElasticLoadBalancingV2Client(_, _) >> loadBalancingV2
+
+    when:
+    operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    def e = thrown(IllegalArgumentException)
+    e.message.contains('Blue/Green')
+    e.message.contains('alternateTargetGroupArn')
+  }
+
+  def 'should allow blue/green on a create with no load balancer (no ALB traffic-shift required)'() {
+    given:
+    // No target group -> BLUE_GREEN needs no advancedConfiguration, so this must not be rejected.
+    def description = Mock(EcsNativeCreateServerGroupDescription)
+    description.getApplication() >> 'mygreatapp'
+    description.getStack() >> 'stack1'
+    description.getFreeFormDetails() >> 'details2'
+    description.getTargetGroup() >> null
+    description.getDeploymentStrategy() >> 'BLUE_GREEN'
+
+    def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
+
+    when:
+    CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
+        new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
+        1, new EcsDefaultNamer(), false)
+
+    then:
+    request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+    request.loadBalancers().isEmpty()
+  }
+
+  def 'should reject blue/green on a load-balanced in-place update when the ALB traffic-shift fields are missing'() {
+    given:
+    // The common ecs-native path: the durable service already exists, so operate() rolls it in
+    // place via UpdateService. BLUE_GREEN + a declared target group but no ALB fields must fail
+    // before the UpdateService call rather than surfacing as an opaque AWS 400.
+    def serviceName = 'mygreatapp-stack1-details2'
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        ecsClusterName: 'my-cluster',
+        deploymentStrategy: 'BLUE_GREEN',
+        targetGroup: 'my-target-group',
+        availabilityZones: ['us-west-1': ['us-west-1a']])
+
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    def e = thrown(IllegalArgumentException)
+    e.message.contains('Blue/Green')
+    e.message.contains('alternateTargetGroupArn')
+    0 * ecs.updateService(_)
+  }
+
   def 'resolveExistingServiceName returns the fixed service name when that ECS service already exists'() {
     given:
     // ecs-native computes the fixed (unversioned) name and asks ECS whether it exists.

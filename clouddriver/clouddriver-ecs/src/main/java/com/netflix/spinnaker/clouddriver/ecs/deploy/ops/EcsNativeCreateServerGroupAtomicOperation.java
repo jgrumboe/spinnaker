@@ -70,6 +70,9 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  */
 public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroupAtomicOperation {
 
+  /** ECS deployment strategy that shifts traffic to a whole new task set (vs. {@code ROLLING}). */
+  private static final String BLUE_GREEN_STRATEGY = "BLUE_GREEN";
+
   public EcsNativeCreateServerGroupAtomicOperation(
       EcsNativeCreateServerGroupDescription description) {
     super(description);
@@ -164,6 +167,8 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
             .taskDefinition(taskDefinition.taskDefinitionArn())
             .forceNewDeployment(true);
 
+    validateBlueGreenInPlaceConfig(nativeDescription());
+
     DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
     if (deploymentConfiguration != null) {
       requestBuilder.deploymentConfiguration(deploymentConfiguration);
@@ -220,6 +225,8 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     CreateServiceRequest.Builder requestBuilder =
         request.toBuilder().deploymentConfiguration(deploymentConfigBuilder.build());
 
+    validateBlueGreenLoadBalancerConfig(nativeDescription, request.loadBalancers());
+
     AdvancedConfiguration advancedConfiguration = buildAdvancedConfiguration(nativeDescription);
     if (advancedConfiguration != null) {
       requestBuilder.loadBalancers(
@@ -230,11 +237,83 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
   }
 
   /**
+   * Fails fast when a {@code BLUE_GREEN} deploy attaches a load balancer but omits the ALB
+   * traffic-shift config. AWS ECS requires an {@code advancedConfiguration} block on every load
+   * balancer when the deployment strategy is {@code BLUE_GREEN}; without it the service
+   * create/update is rejected with a 400 ({@code "advancedConfiguration field is required for all
+   * loadBalancers when using the Blue/green deployment strategy"}). Catching it here turns an
+   * opaque AWS-side failure into an actionable configuration error before the request is sent.
+   *
+   * <p>Only enforced when a load balancer is actually attached: {@code BLUE_GREEN} on a service
+   * with no load balancer needs no {@code advancedConfiguration} and is left alone.
+   */
+  private static void validateBlueGreenLoadBalancerConfig(
+      EcsNativeCreateServerGroupDescription nativeDescription, List<LoadBalancer> loadBalancers) {
+    boolean isBlueGreen =
+        BLUE_GREEN_STRATEGY.equalsIgnoreCase(
+            StringUtils.trimToEmpty(nativeDescription.getDeploymentStrategy()));
+    boolean hasLoadBalancer = loadBalancers != null && !loadBalancers.isEmpty();
+    if (isBlueGreen && hasLoadBalancer && !hasAllAlbTrafficShiftFields(nativeDescription)) {
+      throw new IllegalArgumentException(
+          "The Blue/Green deployment strategy on a load-balanced ECS service requires the ALB"
+              + " traffic-shift config: alternateTargetGroupArn, productionListenerRule,"
+              + " testListenerRule and blueGreenRoleArn must all be set. AWS ECS rejects a"
+              + " Blue/Green deploy whose load balancers have no advancedConfiguration. Provide all"
+              + " four ARNs, or use the Rolling strategy for an in-place, single-target-group"
+              + " deploy.");
+    }
+  }
+
+  /**
+   * In-place ({@code UpdateService}) equivalent of {@link #validateBlueGreenLoadBalancerConfig}.
+   * The update path does not build the SDK {@link LoadBalancer} list, so this checks the
+   * description's declared load-balancer intent (a {@code targetGroup} or any {@code
+   * targetGroupMappings}) rather than a resolved list. AWS ECS applies the same rule to {@code
+   * UpdateService}: a {@code BLUE_GREEN} strategy on a load-balanced service requires the ALB
+   * traffic-shift config.
+   */
+  private static void validateBlueGreenInPlaceConfig(
+      EcsNativeCreateServerGroupDescription nativeDescription) {
+    boolean isBlueGreen =
+        BLUE_GREEN_STRATEGY.equalsIgnoreCase(
+            StringUtils.trimToEmpty(nativeDescription.getDeploymentStrategy()));
+    if (isBlueGreen
+        && descriptionDeclaresLoadBalancer(nativeDescription)
+        && !hasAllAlbTrafficShiftFields(nativeDescription)) {
+      throw new IllegalArgumentException(
+          "The Blue/Green deployment strategy on a load-balanced ECS service requires the ALB"
+              + " traffic-shift config: alternateTargetGroupArn, productionListenerRule,"
+              + " testListenerRule and blueGreenRoleArn must all be set. AWS ECS rejects a"
+              + " Blue/Green deploy whose load balancers have no advancedConfiguration. Provide all"
+              + " four ARNs, or use the Rolling strategy for an in-place, single-target-group"
+              + " deploy.");
+    }
+  }
+
+  /** True when the description attaches a load balancer via {@code targetGroup} or mappings. */
+  private static boolean descriptionDeclaresLoadBalancer(
+      EcsNativeCreateServerGroupDescription nativeDescription) {
+    return StringUtils.isNotBlank(nativeDescription.getTargetGroup())
+        || (nativeDescription.getTargetGroupMappings() != null
+            && !nativeDescription.getTargetGroupMappings().isEmpty());
+  }
+
+  /** True when all four ALB traffic-shift fields are set; false when all are unset. */
+  private static boolean hasAllAlbTrafficShiftFields(
+      EcsNativeCreateServerGroupDescription nativeDescription) {
+    return StringUtils.isNotBlank(nativeDescription.getAlternateTargetGroupArn())
+        && StringUtils.isNotBlank(nativeDescription.getProductionListenerRule())
+        && StringUtils.isNotBlank(nativeDescription.getTestListenerRule())
+        && StringUtils.isNotBlank(nativeDescription.getBlueGreenRoleArn());
+  }
+
+  /**
    * Builds the ALB traffic-shift config for a {@code BLUE_GREEN} deployment, or {@code null} when
-   * the deploy doesn't use one -- {@code BLUE_GREEN} works without it (ECS still stands up a new
-   * task set and swaps it into the existing target group). The four fields are all-or-nothing: they
-   * only make sense together, so a partial set is a configuration mistake, not a valid "no swap"
-   * deploy.
+   * the deploy doesn't use one. {@code BLUE_GREEN} only works without this config when the service
+   * has no load balancer attached; ECS then stands up a new task set with no traffic to shift. As
+   * soon as a load balancer is present, AWS ECS requires this config on it (enforced by {@link
+   * #validateBlueGreenLoadBalancerConfig}). The four fields are all-or-nothing: they only make
+   * sense together, so a partial set is a configuration mistake.
    */
   private static AdvancedConfiguration buildAdvancedConfiguration(
       EcsNativeCreateServerGroupDescription nativeDescription) {
@@ -251,12 +330,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     if (!anySet) {
       return null;
     }
-    boolean allSet =
-        StringUtils.isNotBlank(alternateTargetGroupArn)
-            && StringUtils.isNotBlank(productionListenerRule)
-            && StringUtils.isNotBlank(testListenerRule)
-            && StringUtils.isNotBlank(roleArn);
-    if (!allSet) {
+    if (!hasAllAlbTrafficShiftFields(nativeDescription)) {
       throw new IllegalArgumentException(
           "alternateTargetGroupArn, productionListenerRule, testListenerRule and"
               + " blueGreenRoleArn must all be set together to configure a blue/green ALB"

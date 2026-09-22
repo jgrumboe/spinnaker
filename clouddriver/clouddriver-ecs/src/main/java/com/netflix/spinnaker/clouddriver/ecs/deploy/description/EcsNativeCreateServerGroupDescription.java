@@ -81,12 +81,15 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
   @Nullable Integer bakeTimeInMinutes;
 
   /**
-   * Target group ECS shifts traffic to during a {@code BLUE_GREEN} cutover. Optional: {@code
-   * BLUE_GREEN} works without it (ECS still stands up a new task set and swaps it into the same
-   * target group used today). Set this, together with {@link #getProductionListenerRule()}, {@link
-   * #getTestListenerRule()} and {@link #getBlueGreenRoleArn()}, only to route a separate ALB
-   * listener rule at the new task set for test traffic before shifting production traffic over. All
-   * four must be set together, or none at all.
+   * Target group ECS shifts traffic to during a {@code BLUE_GREEN} cutover.
+   *
+   * <p>Optional <em>only when the service has no load balancer</em>: with no target group attached,
+   * {@code BLUE_GREEN} stands up a new task set with no traffic to shift, so this config is not
+   * needed. As soon as a load balancer is attached, AWS ECS <em>requires</em> the ALB traffic-shift
+   * config on every load balancer for {@code BLUE_GREEN} and rejects the deploy without it; in that
+   * case this field, together with {@link #getProductionListenerRule()}, {@link
+   * #getTestListenerRule()} and {@link #getBlueGreenRoleArn()}, is mandatory. All four must be set
+   * together, or none at all.
    */
   @Nullable String alternateTargetGroupArn;
 

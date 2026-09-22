@@ -166,6 +166,9 @@ export const validateEcsCapacity: Validator = (values) => {
   return validationErrors;
 };
 
+const hasLoadBalancer = (values: IEcsServerGroupCommand): boolean =>
+  required(values.targetGroup) || (values.targetGroupMappings || []).some((mapping) => required(mapping?.targetGroup));
+
 export const validateEcsNativeDeployment: Validator = (values) => {
   const errors: ValidationErrors = {};
   if (values.cloudProvider !== 'ecs-native') {
@@ -178,6 +181,25 @@ export const validateEcsNativeDeployment: Validator = (values) => {
     'blueGreenRoleArn',
   ] as const;
   const setCount = blueGreenFields.filter((field) => required(values[field])).length;
+  const isBlueGreen = values.deploymentStrategy === 'BLUE_GREEN';
+
+  // AWS ECS requires the ALB traffic-shift config on every load balancer for a BLUE_GREEN deploy,
+  // and rejects the deploy with a 400 otherwise ("advancedConfiguration field is required for all
+  // loadBalancers when using the Blue/green deployment strategy"). So when the strategy is
+  // BLUE_GREEN and a load balancer is attached, all four fields are required -- not optional.
+  // (With no load balancer, BLUE_GREEN needs none of them.)
+  if (isBlueGreen && hasLoadBalancer(values) && setCount < blueGreenFields.length) {
+    const message =
+      'The Blue/Green strategy on a load-balanced service requires all four fields: alternate target group ARN, production listener rule, test listener rule, and blue/green IAM role. Provide all four, or use the Rolling strategy.';
+    blueGreenFields.forEach((field) => {
+      if (!required(values[field])) {
+        errors[field] = message;
+      }
+    });
+    return errors;
+  }
+
+  // Otherwise the four fields remain all-or-nothing: a partial set is always a misconfiguration.
   if (setCount > 0 && setCount < blueGreenFields.length) {
     const message =
       'Alternate target group ARN, production listener rule, test listener rule, and blue/green IAM role must all be set together, or all left blank.';
