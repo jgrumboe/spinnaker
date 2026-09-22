@@ -17,8 +17,6 @@
 package com.netflix.spinnaker.clouddriver.ecs.provider.view
 
 import com.netflix.spinnaker.clouddriver.ecs.EcsNativeCloudProvider
-import com.netflix.spinnaker.clouddriver.ecs.model.EcsServerCluster
-import com.netflix.spinnaker.clouddriver.model.ServerGroup
 import spock.lang.Specification
 
 class EcsNativeServerClusterProviderSpec extends Specification {
@@ -32,15 +30,8 @@ class EcsNativeServerClusterProviderSpec extends Specification {
     provider.getCloudProviderId() != delegate.getCloudProviderId()
   }
 
-  def 'forwards every read method to the delegate unchanged'() {
-    given:
-    def cluster = Mock(EcsServerCluster)
-    def serverGroup = Mock(ServerGroup)
-
+  def 'forwards every scoped read method to the delegate unchanged'() {
     when:
-    provider.getClusters()
-    provider.getClusterSummaries('myapp')
-    provider.getClusterDetails('myapp')
     provider.getClusters('myapp', 'test')
     provider.getClusters('myapp', 'test', true)
     provider.getCluster('myapp', 'test', 'myapp-cluster')
@@ -50,9 +41,6 @@ class EcsNativeServerClusterProviderSpec extends Specification {
     provider.supportsMinimalClusters()
 
     then:
-    1 * delegate.getClusters()
-    1 * delegate.getClusterSummaries('myapp')
-    1 * delegate.getClusterDetails('myapp')
     1 * delegate.getClusters('myapp', 'test')
     1 * delegate.getClusters('myapp', 'test', true)
     1 * delegate.getCluster('myapp', 'test', 'myapp-cluster')
@@ -60,5 +48,24 @@ class EcsNativeServerClusterProviderSpec extends Specification {
     1 * delegate.getServerGroup('test', 'us-east-1', 'myapp-v001')
     1 * delegate.getServerGroup('test', 'us-east-1', 'myapp-v001', true)
     1 * delegate.supportsMinimalClusters()
+  }
+
+  def 'does NOT delegate the application-wide aggregate listings, so ECS services are not doubled in the Clusters view'() {
+    when:
+    def clusters = provider.getClusters()
+    def summaries = provider.getClusterSummaries('myapp')
+    def details = provider.getClusterDetails('myapp')
+
+    then:
+    // These back the untyped, all-providers enumeration behind Deck's Clusters view. The ecs
+    // provider already reports every ECS service there; delegating would surface each one twice.
+    clusters == [:]
+    summaries == [:]
+    details == [:]
+
+    and:
+    0 * delegate.getClusters()
+    0 * delegate.getClusterSummaries(_)
+    0 * delegate.getClusterDetails(_)
   }
 }

@@ -39,8 +39,22 @@ import org.springframework.stereotype.Component;
  * cloudProvider: "ecs-native"} would deploy successfully but then fail to resolve its own server
  * group afterwards, since the only registered ECS {@link ClusterProvider} answers to {@code "ecs"}.
  *
- * <p>This class changes no behavior of the original provider: it is a pure delegate that forwards
- * every call to the existing {@link EcsServerClusterProvider} bean.
+ * <p>For the account/name-scoped and exact lookups ({@link #getCluster}, {@link #getServerGroup},
+ * {@link #getClusters(String, String)}), this class is a pure delegate that forwards to the
+ * existing {@link EcsServerClusterProvider} bean. Those are the calls that orca's post-deploy
+ * polling and {@code ClusterController}'s {@code cloudProvider}-scoped endpoints make to resolve an
+ * {@code ecs-native} resource by exact id, and they must succeed.
+ *
+ * <p>The application-wide aggregate listings ({@link #getClusters()}, {@link
+ * #getClusterSummaries(String)}, {@link #getClusterDetails(String)}) deliberately return empty.
+ * Those methods back the untyped, all-providers enumeration in {@code
+ * ServerGroupController.summaryList}/{@code expandedList} and {@code ApplicationsController}, which
+ * powers Deck's Clusters view. Because this provider delegates to the same ECS caching agents as
+ * {@code EcsServerClusterProvider}, delegating the aggregate listings too would surface every ECS
+ * service a second time (once as {@code ecs}, once as {@code ecs-native}) and render each service
+ * as a duplicate cluster. The running ECS resources are the same objects regardless of which
+ * provider deployed them, so the {@code ecs} provider alone is the source of truth for these
+ * unfiltered listings; this provider contributes nothing to them.
  */
 @Component
 public class EcsNativeServerClusterProvider implements ClusterProvider<EcsServerCluster> {
@@ -52,19 +66,22 @@ public class EcsNativeServerClusterProvider implements ClusterProvider<EcsServer
     this.delegate = delegate;
   }
 
+  // Application-wide aggregate listings return empty on purpose: the ecs provider already reports
+  // every ECS service here, and delegating would double each one in Deck's Clusters view. See the
+  // class Javadoc.
   @Override
   public Map<String, Set<EcsServerCluster>> getClusters() {
-    return delegate.getClusters();
+    return Map.of();
   }
 
   @Override
   public Map<String, Set<EcsServerCluster>> getClusterSummaries(String application) {
-    return delegate.getClusterSummaries(application);
+    return Map.of();
   }
 
   @Override
   public Map<String, Set<EcsServerCluster>> getClusterDetails(String application) {
-    return delegate.getClusterDetails(application);
+    return Map.of();
   }
 
   @Override
