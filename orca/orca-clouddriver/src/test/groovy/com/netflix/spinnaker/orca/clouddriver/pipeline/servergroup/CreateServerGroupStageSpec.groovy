@@ -136,6 +136,44 @@ class CreateServerGroupStageSpec extends Specification {
     true                    | "rollingredblack" | ["us-west-1": ["myapplication-stack-v001"]] || [expectedRollbackContext([enableAndDisableOnly: true, onlyEnabledServerGroups: true]), expectedDestroyContext()]
   }
 
+  @Unroll
+  def "appends waitForEcsNativeServiceDeployment only for the ecs-native cloud provider (cloudProvider=#cloudProvider)"() {
+    given:
+    def featuresService = Mock(FeaturesService) {
+      areEntityTagsAvailable() >> false
+    }
+    // A plain Mock returns false for isEnabled(...) by default, which disables the optional
+    // force-cache-refresh tasks and keeps the task list deterministic for this assertion.
+    def dynamicConfigService = Mock(DynamicConfigService)
+    def stageForProvider = new CreateServerGroupStage(
+        featuresService,
+        new RollbackClusterStage(),
+        new DestroyServerGroupStage(dynamicConfigService),
+        dynamicConfigService)
+
+    def stage = stage {
+      context = [
+        "application"  : "myapplication",
+        "account"      : "test",
+        "cloudProvider": cloudProvider,
+      ]
+    }
+
+    when:
+    def taskNames = stageForProvider.basicTasks(stage)*.name
+
+    then:
+    taskNames.contains("waitForUpInstances")
+    taskNames.contains("waitForEcsNativeServiceDeployment") == expectWait
+
+    where:
+    cloudProvider | expectWait
+    "ecs-native"  | true
+    "ecs"         | false
+    "aws"         | false
+    null          | false
+  }
+
   Map expectedRollbackContext(Map<String, Object> additionalRollbackContext) {
     return [
       regions                  : ["us-west-1"],

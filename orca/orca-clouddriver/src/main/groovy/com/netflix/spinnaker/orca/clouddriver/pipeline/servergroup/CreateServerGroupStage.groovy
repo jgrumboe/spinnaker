@@ -33,6 +33,7 @@ import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.strategies.Ab
 import com.netflix.spinnaker.orca.clouddriver.tasks.MonitorKatoTask
 import com.netflix.spinnaker.orca.clouddriver.tasks.instance.WaitForUpInstancesTask
 import com.netflix.spinnaker.orca.clouddriver.tasks.servergroup.AddServerGroupEntityTagsTask
+import com.netflix.spinnaker.orca.clouddriver.tasks.providers.ecs.WaitForEcsNativeServiceDeploymentTask
 import com.netflix.spinnaker.orca.clouddriver.tasks.servergroup.CreateServerGroupTask
 import com.netflix.spinnaker.orca.clouddriver.tasks.servergroup.ServerGroupCacheForceRefreshTask
 import com.netflix.spinnaker.orca.clouddriver.utils.MonikerHelper
@@ -46,6 +47,7 @@ import static java.util.concurrent.TimeUnit.MINUTES
 @Component
 class CreateServerGroupStage extends AbstractDeployStrategyStage implements ForceCacheRefreshAware {
   public static final String PIPELINE_CONFIG_TYPE = "createServerGroup"
+  private static final String ECS_NATIVE_CLOUD_PROVIDER = "ecs-native"
 
   private FeaturesService featuresService
   private RollbackClusterStage rollbackClusterStage
@@ -86,6 +88,18 @@ class CreateServerGroupStage extends AbstractDeployStrategyStage implements Forc
 
     if (isForceCacheRefreshEnabled(dynamicConfigService)) {
       tasks << TaskNode.task("forceCacheRefresh", ServerGroupCacheForceRefreshTask)
+    }
+
+    // For ecs-native, waitForUpInstances alone is not a real gate on the new revision: the provider
+    // keeps a single durable ECS service updated in place, so its desiredCount is trivially satisfied
+    // by the still-RUNNING old-revision task while the new revision is mid-rollout (and an ECS task
+    // counts as "up" on lastStatus==RUNNING, before ALB registration). Append a wait on ECS's own
+    // deployment rolloutState so the stage only succeeds once ECS reports COMPLETED (and fails if the
+    // deployment circuit breaker rolled it back). Gated to ecs-native so classic ecs and every other
+    // provider are unaffected. Runs last, after the cache refresh, so deploy.server.groups is set and
+    // the service is cached for the task's account/region/serverGroupName resolution.
+    if (ECS_NATIVE_CLOUD_PROVIDER == getCloudProvider(stage)) {
+      tasks << TaskNode.task("waitForEcsNativeServiceDeployment", WaitForEcsNativeServiceDeploymentTask)
     }
 
     return tasks
