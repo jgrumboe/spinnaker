@@ -25,6 +25,7 @@ import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateS
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName;
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixAssumeRoleEcsCredentials;
+import com.netflix.spinnaker.moniker.Moniker;
 import com.netflix.spinnaker.moniker.Namer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -57,6 +58,10 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  *   <li>When {@link EcsNativeCreateServerGroupDescription#isInPlaceUpdate()} is set and a source
  *       server group exists, the redeploy rolls that durable service in place via a native {@code
  *       UpdateService} instead of creating a new versioned service (see {@link #operate}).
+ *   <li>The initial deploy creates a service with a fixed, unversioned name (the cluster/family
+ *       name, e.g. {@code app-stack-detail}) with no {@code -vNNN} suffix, since ecs-native keeps a
+ *       single durable service and rolls new revisions in place (see {@link
+ *       #buildEcsServerGroupName}).
  * </ol>
  *
  * <p>The shared {@link CreateServerGroupAtomicOperation} is not modified; this operation is a
@@ -83,6 +88,38 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     }
 
     return super.operate(priorOutputs);
+  }
+
+  /**
+   * ecs-native uses a fixed, unversioned service name (the cluster/family name, e.g. {@code
+   * app-stack-detail}) rather than the resolver's next {@code -vNNN} slot. There is one durable
+   * service per cluster that is rolled in place, so a per-deploy version sequence has no meaning;
+   * the moniker sequence is left null (revision visibility comes from the deployed image /
+   * task-definition detail, not the name). Overriding here keeps the shared {@link
+   * CreateServerGroupAtomicOperation} — and the classic {@code ecs} provider's versioned naming —
+   * untouched.
+   */
+  @Override
+  protected EcsServerGroupName buildEcsServerGroupName(EcsClient ecs, Namer<EcsResource> namer) {
+    Moniker moniker = description.getMoniker();
+    if (moniker == null) {
+      moniker =
+          Moniker.builder()
+              .app(description.getApplication())
+              .stack(description.getStack())
+              .detail(description.getFreeFormDetails())
+              .build();
+    } else {
+      // Defensively drop any sequence the caller supplied: a fixed-name service has no version.
+      moniker =
+          Moniker.builder()
+              .app(moniker.getApp())
+              .cluster(moniker.getCluster())
+              .stack(moniker.getStack())
+              .detail(moniker.getDetail())
+              .build();
+    }
+    return new EcsServerGroupName(moniker, true);
   }
 
   /** The service to roll in place, taken from the deploy source; {@code null} on first deploy. */

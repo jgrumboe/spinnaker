@@ -155,7 +155,9 @@ public class CreateServerGroupAtomicOperation
     return makeDeploymentResult(service);
   }
 
-  private EcsServerGroupName buildEcsServerGroupName(EcsClient ecs, Namer<EcsResource> namer) {
+  // protected (not private) so the ecs-native create operation can override name resolution to
+  // produce a fixed, unversioned server-group name instead of the resolver's next vNNN.
+  protected EcsServerGroupName buildEcsServerGroupName(EcsClient ecs, Namer<EcsResource> namer) {
     EcsClient ecsV2 =
         amazonClientProvider.getAmazonEcsV2(description.getCredentials(), getRegion());
     EcsServerGroupNameResolver serverGroupNameResolver =

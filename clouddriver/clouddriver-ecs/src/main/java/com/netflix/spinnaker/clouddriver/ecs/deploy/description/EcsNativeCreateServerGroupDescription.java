@@ -80,8 +80,12 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
   @Nullable String deploymentStrategy;
 
   /**
-   * Minutes ECS waits after a {@code BLUE_GREEN} deployment's new task set reaches steady state
-   * before terminating the old one. Ignored for {@code ROLLING}.
+   * Minutes ECS waits before terminating the previous service revision and marking the deployment
+   * complete. Supported by the ECS deployment controller for both {@code ROLLING} and {@code
+   * BLUE_GREEN} (AWS only excludes the {@code EXTERNAL} and {@code CODE_DEPLOY} controllers). For
+   * {@code BLUE_GREEN} it is the soak after the new task set reaches steady state; for {@code
+   * ROLLING} it is the soak after the new tasks are healthy, before the old revision is fully
+   * retired. Left unset, ECS applies its own default (15 minutes for blue/green, none for rolling).
    */
   @Nullable Integer bakeTimeInMinutes;
 

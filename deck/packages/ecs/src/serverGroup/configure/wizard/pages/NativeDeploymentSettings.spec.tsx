@@ -58,7 +58,7 @@ describe('NativeDeploymentSettings', () => {
     expect(onFieldChange).toHaveBeenCalledWith('cloudProvider', 'ecs');
   });
 
-  it('shows the native fields, defaulting to ROLLING with no bake-time/ALB fields, once enabled', () => {
+  it('shows the native fields, defaulting to ROLLING with bake time but no ALB traffic-shift fields, once enabled', () => {
     const wrapper = mount(
       <NativeDeploymentSettings
         application={null as any}
@@ -70,11 +70,13 @@ describe('NativeDeploymentSettings', () => {
 
     expect(wrapper.find('[data-test-id="NativeDeployment.inPlaceUpdate"]').exists()).toBe(true);
     expect(wrapper.find('[data-test-id="NativeDeployment.deploymentStrategy"]').prop('value')).toBe('ROLLING');
-    expect(wrapper.find('[data-test-id="NativeDeployment.bakeTimeInMinutes"]').exists()).toBe(false);
+    // Bake time is valid for the ECS deployment controller regardless of strategy, so it shows for ROLLING too.
+    expect(wrapper.find('[data-test-id="NativeDeployment.bakeTimeInMinutes"]').exists()).toBe(true);
+    // The ALB traffic-shift fields remain blue/green-only.
     expect(wrapper.find('[data-test-id="NativeDeployment.alternateTargetGroupArn"]').exists()).toBe(false);
   });
 
-  it('reveals bake time and the ALB traffic-shift fields once BLUE_GREEN is selected', () => {
+  it('reveals the ALB traffic-shift fields once BLUE_GREEN is selected, with bake time still shown', () => {
     const wrapper = mount(
       <NativeDeploymentSettings
         application={null as any}

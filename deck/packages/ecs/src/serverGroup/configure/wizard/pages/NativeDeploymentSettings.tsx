@@ -155,31 +155,36 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
             </div>
           </div>
 
+          {/* Bake time applies to both ROLLING and BLUE_GREEN. AWS ECS supports bakeTimeInMinutes for
+              the ECS deployment controller regardless of strategy (it only excludes the EXTERNAL and
+              CODE_DEPLOY controllers), so it is intentionally rendered outside the isBlueGreen block. */}
+          <div className="form-group">
+            <div className="col-md-5 sm-label-right">
+              Bake Time (minutes) <HelpField id="ecs.native.bakeTimeInMinutes" />
+            </div>
+            <div className="col-md-2">
+              <input
+                aria-label="Bake time in minutes"
+                className="form-control input-sm no-spel"
+                data-test-id="NativeDeployment.bakeTimeInMinutes"
+                onChange={(event) =>
+                  onFieldChange('bakeTimeInMinutes', event.target.value === '' ? null : Number(event.target.value))
+                }
+                type="number"
+                value={command.bakeTimeInMinutes ?? ''}
+              />
+            </div>
+            <div className="col-md-12">
+              <span className="help-block" style={{ marginLeft: '0' }}>
+                Minutes ECS waits before terminating the previous service revision and marking the deployment complete.
+                For Blue/Green this is the soak after the new task set reaches steady state; for Rolling it is the soak
+                after the new tasks are healthy, before the old revision is fully retired.
+              </span>
+            </div>
+          </div>
+
           {isBlueGreen && (
             <>
-              <div className="form-group">
-                <div className="col-md-5 sm-label-right">
-                  Bake Time (minutes) <HelpField id="ecs.native.bakeTimeInMinutes" />
-                </div>
-                <div className="col-md-2">
-                  <input
-                    aria-label="Bake time in minutes"
-                    className="form-control input-sm no-spel"
-                    data-test-id="NativeDeployment.bakeTimeInMinutes"
-                    onChange={(event) =>
-                      onFieldChange('bakeTimeInMinutes', event.target.value === '' ? null : Number(event.target.value))
-                    }
-                    type="number"
-                    value={command.bakeTimeInMinutes ?? ''}
-                  />
-                </div>
-                <div className="col-md-12">
-                  <span className="help-block" style={{ marginLeft: '0' }}>
-                    Minutes ECS waits after the new task set reaches steady state before terminating the old one.
-                  </span>
-                </div>
-              </div>
-
               <div className="form-group">
                 <div className="sm-label-left">
                   <b>ALB traffic shift (optional)</b> <HelpField id="ecs.native.blueGreenAdvanced" />
