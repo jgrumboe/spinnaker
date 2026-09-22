@@ -318,6 +318,92 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     0 * ecs.updateService(_)
   }
 
+  def 'in-place blue/green update attaches the ALB traffic-shift config to the UpdateService load balancer'() {
+    given:
+    // The durable service already exists, so operate() rolls it in place. With a full blue/green
+    // ALB config, the UpdateServiceRequest must carry the advancedConfiguration on its load balancer
+    // -- otherwise AWS ECS rejects the deploy with a 400.
+    def serviceName = 'mygreatapp-stack1-details2'
+    def loadBalancingV2 = Mock(ElasticLoadBalancingV2Client)
+    loadBalancingV2.describeTargetGroups(_) >> DescribeTargetGroupsResponse.builder()
+        .targetGroups(TargetGroup.builder().targetGroupArn('arn:target-group').build())
+        .build()
+
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        ecsClusterName: 'my-cluster',
+        deploymentStrategy: 'BLUE_GREEN',
+        targetGroup: 'my-target-group',
+        containerPort: 80,
+        availabilityZones: ['us-west-1': ['us-west-1a']],
+        alternateTargetGroupArn: 'arn:alternate-target-group',
+        productionListenerRule: 'arn:production-rule',
+        testListenerRule: 'arn:test-rule',
+        blueGreenRoleArn: 'arn:aws:iam::123456789012:role/ecsBlueGreenRole')
+
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.amazonClientProvider = amazonClientProvider
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    amazonClientProvider.getElasticLoadBalancingV2Client(_, _) >> loadBalancingV2
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest req ->
+      req.service() == serviceName &&
+          req.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN' &&
+          req.loadBalancers().size() == 1 &&
+          req.loadBalancers().get(0).advancedConfiguration().alternateTargetGroupArn() == 'arn:alternate-target-group' &&
+          req.loadBalancers().get(0).advancedConfiguration().productionListenerRule() == 'arn:production-rule' &&
+          req.loadBalancers().get(0).advancedConfiguration().testListenerRule() == 'arn:test-rule' &&
+          req.loadBalancers().get(0).advancedConfiguration().roleArn() == 'arn:aws:iam::123456789012:role/ecsBlueGreenRole'
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
+  }
+
+  def 'in-place rolling update leaves the UpdateService load balancers untouched'() {
+    given:
+    // A plain rolling in-place update must not (re)send loadBalancers -- it only changes the task
+    // definition and deployment config, not the service's load-balancer wiring.
+    def serviceName = 'mygreatapp-stack1-details2'
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        ecsClusterName: 'my-cluster',
+        deploymentStrategy: 'ROLLING',
+        targetGroup: 'my-target-group',
+        availabilityZones: ['us-west-1': ['us-west-1a']])
+
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.amazonClientProvider = amazonClientProvider
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest req ->
+      req.service() == serviceName && !req.hasLoadBalancers()
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
+    // No ELB lookup happens for a rolling in-place update.
+    0 * amazonClientProvider.getElasticLoadBalancingV2Client(_, _)
+  }
+
   def 'resolveExistingServiceName returns the fixed service name when that ECS service already exists'() {
     given:
     // ecs-native computes the fixed (unversioned) name and asks ECS whether it exists.

@@ -865,7 +865,7 @@ public class CreateServerGroupAtomicOperation
     return result;
   }
 
-  private Collection<LoadBalancer> retrieveLoadBalancers(String containerName) {
+  protected Collection<LoadBalancer> retrieveLoadBalancers(String containerName) {
     Set<LoadBalancer> loadBalancers = new HashSet<>();
     Set<CreateServerGroupDescription.TargetGroupProperties> targetGroupMappings = new HashSet<>();
 

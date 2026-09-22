@@ -27,6 +27,7 @@ import com.netflix.spinnaker.clouddriver.ecs.security.NetflixAssumeRoleEcsCreden
 import com.netflix.spinnaker.moniker.Moniker;
 import com.netflix.spinnaker.moniker.Namer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -172,6 +173,19 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
     if (deploymentConfiguration != null) {
       requestBuilder.deploymentConfiguration(deploymentConfiguration);
+    }
+
+    // For a blue/green ALB traffic shift ECS needs the advancedConfiguration on the service's load
+    // balancer, and UpdateService only carries it when we also (re)send the loadBalancers block.
+    // Scoped to exactly this case: a plain rolling in-place update leaves loadBalancers untouched
+    // so
+    // it doesn't try to mutate the service's existing load-balancer wiring.
+    AdvancedConfiguration advancedConfiguration = buildAdvancedConfiguration(nativeDescription());
+    if (advancedConfiguration != null) {
+      Collection<LoadBalancer> loadBalancers =
+          retrieveLoadBalancers(serverGroupName.getContainerName());
+      requestBuilder.loadBalancers(
+          withAdvancedConfiguration(new ArrayList<>(loadBalancers), advancedConfiguration));
     }
 
     Service service = ecs.updateService(requestBuilder.build()).service();
