@@ -43,6 +43,7 @@ public class EcsServerGroupSerializationTest {
     serverGroup.setDeploymentId("ecs-svc/1234567890");
     serverGroup.setRolloutState("IN_PROGRESS");
     serverGroup.setRolloutStateReason("ECS deployment is in progress.");
+    serverGroup.setIsNative(true);
 
     @SuppressWarnings("unchecked")
     Map<String, Object> json = objectMapper.convertValue(serverGroup, Map.class);
@@ -52,6 +53,7 @@ public class EcsServerGroupSerializationTest {
     assertEquals("ecs-svc/1234567890", json.get("deploymentId"));
     assertEquals("IN_PROGRESS", json.get("rolloutState"));
     assertEquals("ECS deployment is in progress.", json.get("rolloutStateReason"));
+    assertEquals(true, json.get("isNative"));
 
     // The any-getter map itself must not surface as a nested property (that would indicate a
     // misconfigured @JsonAnyGetter and risk a duplicate key).
@@ -71,5 +73,8 @@ public class EcsServerGroupSerializationTest {
     assertFalse(json.containsKey("deploymentId"));
     assertFalse(json.containsKey("rolloutState"));
     assertFalse(json.containsKey("rolloutStateReason"));
+    // isNative is only emitted when true, so a classic server group must not carry it (Deck treats
+    // its absence as "classic" and shows the disabled-sibling rollback).
+    assertFalse(json.containsKey("isNative"));
   }
 }

@@ -78,6 +78,16 @@ public class EcsServerGroup implements ServerGroup {
   @JsonIgnore String rolloutState;
   @JsonIgnore String rolloutStateReason;
 
+  // Whether this ECS service was deployed by the opt-in ecs-native provider (a single durable
+  // service, updated in place) rather than the classic versioned-service (app-stack-detail-vNNN)
+  // provider. The read path can't tell the two apart by cloudProvider/type (both are stamped
+  // "ecs"), so this is derived from the name/moniker: native services have a fixed name with no
+  // vNNN sequence, so moniker.sequence == null. Deck reads this to route ecs-native-specific
+  // actions (e.g. the rollback-to-a-prior-task-definition-revision modal) instead of the classic
+  // disabled-sibling rollback. Emitted via getExtraAttributes() for the same reason the rollout
+  // fields are (to reach both the details and clusters-summary payloads).
+  @JsonIgnore Boolean isNative;
+
   @Override
   public Boolean isDisabled() {
     return disabled;
@@ -105,6 +115,9 @@ public class EcsServerGroup implements ServerGroup {
     }
     if (rolloutStateReason != null) {
       extraAttributes.put("rolloutStateReason", rolloutStateReason);
+    }
+    if (Boolean.TRUE.equals(isNative)) {
+      extraAttributes.put("isNative", true);
     }
     return extraAttributes;
   }

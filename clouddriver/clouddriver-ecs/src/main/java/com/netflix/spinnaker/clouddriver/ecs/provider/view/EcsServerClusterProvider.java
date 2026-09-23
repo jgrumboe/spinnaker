@@ -444,6 +444,14 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
     // detailed view, so set them regardless of includeDetails -- the clusters-view card header
     // reads them from the summary payload.
     serverGroup.setTaskDefinitionRevision(taskDefinitionRevision);
+    // ecs-native services have a fixed, unversioned name (app-stack-detail, no -vNNN), so Frigga
+    // parses no sequence; classic ecs always deploys a versioned service (via
+    // EcsServerGroupNameResolver) with a numeric sequence. cloudProvider/type are stamped "ecs" for
+    // both, so this moniker-derived flag is how Deck distinguishes a native service (e.g. to pick
+    // the native task-definition-revision rollback instead of the classic disabled-sibling one).
+    if (moniker != null && moniker.getSequence() == null) {
+      serverGroup.setIsNative(true);
+    }
     if (service != null) {
       serverGroup
           .setDeploymentId(service.getDeploymentId())

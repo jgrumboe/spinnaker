@@ -439,6 +439,9 @@ class EcsServerClusterProviderSpec extends Specification {
     serverGroup.deploymentId == 'ecs-svc/9876543210'
     serverGroup.rolloutState == 'IN_PROGRESS'
     serverGroup.rolloutStateReason == 'ECS deployment is in progress.'
+    // The fixture service is versioned (${FAMILY_NAME}-v007), so its moniker has a sequence and it
+    // is NOT flagged native. (A fixed-name, sequence-less service would set isNative = true.)
+    serverGroup.getIsNative() == null
   }
 
   def makeEcsServerGroup(String serviceName, String region, long startTime, String taskId, Map healthStatus, String ip) {
