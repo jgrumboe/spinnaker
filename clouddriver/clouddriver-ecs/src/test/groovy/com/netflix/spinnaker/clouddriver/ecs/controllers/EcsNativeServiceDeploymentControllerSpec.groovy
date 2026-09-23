@@ -26,9 +26,17 @@ import org.springframework.http.HttpStatus
 import spock.lang.Specification
 import spock.lang.Subject
 import software.amazon.awssdk.services.ecs.EcsClient
+import software.amazon.awssdk.services.ecs.model.ContainerDefinition
 import software.amazon.awssdk.services.ecs.model.Deployment
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
+import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionRequest
+import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionResponse
+import software.amazon.awssdk.services.ecs.model.ListTaskDefinitionsRequest
+import software.amazon.awssdk.services.ecs.model.ListTaskDefinitionsResponse
 import software.amazon.awssdk.services.ecs.model.Service as AmazonEcsService
+import software.amazon.awssdk.services.ecs.model.SortOrder
+import software.amazon.awssdk.services.ecs.model.TaskDefinition
+import software.amazon.awssdk.services.ecs.model.TaskDefinitionStatus
 
 class EcsNativeServiceDeploymentControllerSpec extends Specification {
 
@@ -119,5 +127,105 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
       pendingCount == 1
       failedTasks == 0
     }
+  }
+
+  def 'listTaskDefinitions returns 400 when the account is not an ECS account'() {
+    given:
+    credentialsRepository.getOne('test') >> null
+
+    when:
+    def response = controller.listTaskDefinitions('test', 'us-west-2', 'myapp')
+
+    then:
+    response.statusCode == HttpStatus.BAD_REQUEST
+  }
+
+  def 'listTaskDefinitions returns 404 when the service is not in the cache'() {
+    given:
+    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    serviceCacheClient.getAll('test', 'us-west-2') >> []
+
+    when:
+    def response = controller.listTaskDefinitions('test', 'us-west-2', 'myapp')
+
+    then:
+    response.statusCode == HttpStatus.NOT_FOUND
+  }
+
+  def 'listTaskDefinitions lists ACTIVE revisions newest-first and flags the current one'() {
+    given:
+    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    def cachedService = new Service(
+      serviceName: 'myapp',
+      clusterArn: 'cluster-arn',
+      taskDefinition: 'arn:aws:ecs:us-west-2:1:task-definition/myapp:2')
+    serviceCacheClient.getAll('test', 'us-west-2') >> [cachedService]
+    amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
+
+    def arnV3 = 'arn:aws:ecs:us-west-2:1:task-definition/myapp:3'
+    def arnV2 = 'arn:aws:ecs:us-west-2:1:task-definition/myapp:2'
+    ecs.listTaskDefinitions(_) >> ListTaskDefinitionsResponse.builder()
+      .taskDefinitionArns(arnV3, arnV2)
+      .build()
+
+    ecs.describeTaskDefinition({ DescribeTaskDefinitionRequest r -> r.taskDefinition() == arnV3 }) >>
+      DescribeTaskDefinitionResponse.builder()
+        .taskDefinition(TaskDefinition.builder()
+          .taskDefinitionArn(arnV3)
+          .family('myapp')
+          .revision(3)
+          .containerDefinitions(ContainerDefinition.builder().image('repo/myapp:v3').build())
+          .build())
+        .build()
+    ecs.describeTaskDefinition({ DescribeTaskDefinitionRequest r -> r.taskDefinition() == arnV2 }) >>
+      DescribeTaskDefinitionResponse.builder()
+        .taskDefinition(TaskDefinition.builder()
+          .taskDefinitionArn(arnV2)
+          .family('myapp')
+          .revision(2)
+          .containerDefinitions(ContainerDefinition.builder().image('repo/myapp:v2').build())
+          .build())
+        .build()
+
+    when:
+    def response = controller.listTaskDefinitions('test', 'us-west-2', 'myapp')
+
+    then:
+    response.statusCode == HttpStatus.OK
+    response.body.size() == 2
+    with(response.body[0]) {
+      revision == 3
+      family == 'myapp'
+      taskDefinitionArn == arnV3
+      containerImages == ['repo/myapp:v3']
+      !current
+    }
+    with(response.body[1]) {
+      revision == 2
+      taskDefinitionArn == arnV2
+      containerImages == ['repo/myapp:v2']
+      current
+    }
+  }
+
+  def 'listTaskDefinitions requests ACTIVE revisions for the service family, newest first'() {
+    given:
+    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    def cachedService = new Service(
+      serviceName: 'myapp',
+      clusterArn: 'cluster-arn',
+      taskDefinition: 'arn:aws:ecs:us-west-2:1:task-definition/myapp:2')
+    serviceCacheClient.getAll('test', 'us-west-2') >> [cachedService]
+    amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
+
+    when:
+    controller.listTaskDefinitions('test', 'us-west-2', 'myapp')
+
+    then:
+    1 * ecs.listTaskDefinitions({ ListTaskDefinitionsRequest r ->
+      r.familyPrefix() == 'myapp' &&
+        r.status() == TaskDefinitionStatus.ACTIVE &&
+        r.sort() == SortOrder.DESC
+    }) >> ListTaskDefinitionsResponse.builder().taskDefinitionArns([]).build()
   }
 }
