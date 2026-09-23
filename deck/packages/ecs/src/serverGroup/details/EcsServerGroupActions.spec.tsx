@@ -141,9 +141,11 @@ describe('<EcsServerGroupActions />', () => {
     expect(show).toHaveBeenCalledOnceWith({ application: app, serverGroup }, runtimeServices);
   });
 
-  it('opens the native rollback modal for an ecs-native server group', () => {
+  it('opens the native rollback modal for an ecs-native server group (detected by rollout fields)', () => {
     const app = buildApp();
-    const serverGroup = buildServerGroup({ cloudProvider: 'ecs-native' });
+    // clouddriver stamps cloudProvider "ecs" on native services too, so native is detected by the
+    // presence of the ECS-native rollout fields, not by cloudProvider.
+    const serverGroup = buildServerGroup({ taskDefinitionRevision: 14, rolloutState: 'COMPLETED' });
     const classicShow = spyOn(EcsRollbackServerGroupModal, 'show').and.returnValue(Promise.resolve({} as any));
     const nativeShow = spyOn(EcsNativeRollbackServerGroupModal, 'show').and.returnValue(Promise.resolve({} as any));
     const wrapper = shallow(<EcsServerGroupActions app={app} serverGroup={serverGroup} />);

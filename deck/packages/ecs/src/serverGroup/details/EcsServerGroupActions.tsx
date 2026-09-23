@@ -40,7 +40,15 @@ export function EcsServerGroupActionsComponent({
   const showEntityTags = SETTINGS.feature && SETTINGS.feature.entityTags;
   // The classic rollback re-enables a disabled sibling server group; an ecs-native service is a
   // single durable service, so it rolls back to an earlier task-definition revision instead.
-  const isNative = serverGroup.cloudProvider === 'ecs-native';
+  //
+  // We can't key off cloudProvider/type: clouddriver's read path (EcsServerClusterProvider) stamps
+  // both as "ecs" on every ECS server group, native ones included, so there's no native marker
+  // there. Instead detect native the same way EcsDeploymentSection does -- by the ECS-native
+  // rollout fields the payload carries (taskDefinitionRevision / rolloutState), which clouddriver
+  // populates for native services (via EcsServerGroup.getExtraAttributes) and leaves absent on
+  // classic ones.
+  const sg = serverGroup as any;
+  const isNative = sg.taskDefinitionRevision != null || sg.rolloutState != null;
   const openRollback = () =>
     isNative
       ? EcsNativeRollbackServerGroupModal.show({ application: app, serverGroup }, runtimeServices)
