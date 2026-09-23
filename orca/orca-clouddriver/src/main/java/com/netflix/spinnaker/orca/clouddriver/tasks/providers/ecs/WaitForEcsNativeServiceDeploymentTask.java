@@ -40,10 +40,12 @@ import org.springframework.stereotype.Component;
  * ecs-native} deploy/clone stage; it doesn't hook into the shared deploy stage's task graph, so
  * providers other than {@code ecs-native} are unaffected and existing pipelines need no changes.
  *
- * <p>Reads {@code account}, {@code region}, and {@code serverGroupName} directly from the stage
- * context; falls back to the {@code deploy.server.groups} output of the preceding deploy stage for
- * {@code serverGroupName}/{@code region} when not set explicitly, following the same convention
- * other post-deploy wait tasks use.
+ * <p>Reads {@code account} (or {@code credentials}), {@code region}, and {@code serverGroupName}
+ * directly from the stage context; falls back to the {@code deploy.server.groups} output of the
+ * preceding deploy stage for {@code serverGroupName}/{@code region} when not set explicitly,
+ * following the same convention other post-deploy wait tasks use. The {@code credentials} fallback
+ * lets it run in the same stage as an {@code ecs-native} rollback/update op (which carries the
+ * account as {@code credentials}), not just after a separate deploy stage.
  */
 @Slf4j
 @Component
@@ -70,7 +72,13 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
   @Override
   public TaskResult execute(@Nonnull StageExecution stage) {
     Map<String, Object> context = stage.getContext();
+    // Post-deploy stages set "account"; server-group operation stages (and the ecs-native rollback
+    // stage, via AbstractServerGroupTask) carry the account as "credentials" instead. Accept
+    // either.
     String account = (String) context.get("account");
+    if (account == null) {
+      account = (String) context.get("credentials");
+    }
     String region = resolveRegion(context);
     String serverGroupName = resolveServerGroupName(context, region);
 

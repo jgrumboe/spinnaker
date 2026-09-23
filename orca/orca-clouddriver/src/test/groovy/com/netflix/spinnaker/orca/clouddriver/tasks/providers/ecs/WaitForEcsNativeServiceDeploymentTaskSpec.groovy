@@ -75,6 +75,19 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
     result.status == ExecutionStatus.RUNNING
   }
 
+  def "falls back to 'credentials' for the account (the ecs-native rollback/op stage sets that, not 'account')"() {
+    given:
+    def stage = stageWithContext([credentials: 'test', region: 'eu-central-1', serverGroupName: 'myapp'])
+    def status = new EcsServiceDeploymentStatus(rolloutState: 'COMPLETED')
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus('test', 'eu-central-1', 'myapp') >> Calls.response(status)
+    result.status == ExecutionStatus.SUCCEEDED
+  }
+
   def "throws when account, region, or serverGroupName cannot be resolved"() {
     given:
     def stage = stageWithContext([account: 'test'])
