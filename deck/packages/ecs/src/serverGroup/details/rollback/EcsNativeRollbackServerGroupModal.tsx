@@ -24,8 +24,18 @@ import {
   ValidationMessage,
 } from '@spinnaker/core';
 
-import type { IEcsTaskDefinitionRevision } from './ecsNativeTaskDefinition.read.service';
-import { EcsNativeTaskDefinitionReader } from './ecsNativeTaskDefinition.read.service';
+/**
+ * One task-definition revision of the ecs-native service's family. clouddriver attaches these to
+ * the server-group details payload (EcsServerGroup.taskDefinitionRevisions) for native services, so
+ * the picker reads them off the server group directly — no separate endpoint/gate route.
+ */
+export interface IEcsTaskDefinitionRevision {
+  taskDefinitionArn: string;
+  family: string;
+  revision: number;
+  containerImages: string[];
+  current: boolean;
+}
 
 export interface IEcsNativeRollbackServerGroupModalProps extends IModalComponentProps {
   application: Application;
@@ -55,8 +65,6 @@ export interface IEcsNativeRollbackServerGroupErrors {
 
 interface IEcsNativeRollbackServerGroupModalState {
   initialValues: IEcsNativeRollbackServerGroupValues;
-  loading: boolean;
-  loadError?: string;
   revisions: IEcsTaskDefinitionRevision[];
   taskMonitor: TaskMonitor;
   verified: boolean;
@@ -104,15 +112,15 @@ export class EcsNativeRollbackServerGroupModal extends React.Component<
     return ReactModal.show(EcsNativeRollbackServerGroupModal, props, undefined, runtimeServices);
   }
 
-  private mounted = false;
-
   public constructor(props: IEcsNativeRollbackServerGroupModalProps) {
     super(props);
     const { application, serverGroup } = props;
+    // clouddriver attaches the family's revisions to the details payload for native services, so
+    // they're already present on the server group by the time the actions menu can open this modal.
+    const revisions = ((serverGroup as any).taskDefinitionRevisions as IEcsTaskDefinitionRevision[]) || [];
     this.state = {
       initialValues: {},
-      loading: true,
-      revisions: [],
+      revisions,
       taskMonitor: new TaskMonitor({
         application,
         title: `Rollback ${serverGroup.name}`,
@@ -121,25 +129,6 @@ export class EcsNativeRollbackServerGroupModal extends React.Component<
       }),
       verified: false,
     };
-  }
-
-  public componentDidMount(): void {
-    this.mounted = true;
-    EcsNativeTaskDefinitionReader.listTaskDefinitionRevisions(this.props.serverGroup)
-      .then((revisions) => {
-        if (this.mounted) {
-          this.setState({ loading: false, revisions });
-        }
-      })
-      .catch(() => {
-        if (this.mounted) {
-          this.setState({ loading: false, loadError: 'Could not load task-definition revisions' });
-        }
-      });
-  }
-
-  public componentWillUnmount(): void {
-    this.mounted = false;
   }
 
   private close = (): void => this.props.dismissModal();
@@ -173,8 +162,7 @@ export class EcsNativeRollbackServerGroupModal extends React.Component<
 
   public render(): JSX.Element {
     const { serverGroup } = this.props;
-    const { loading, loadError, revisions } = this.state;
-    const targets = rollbackTargets(revisions);
+    const targets = rollbackTargets(this.state.revisions);
 
     return (
       <>
@@ -203,19 +191,7 @@ export class EcsNativeRollbackServerGroupModal extends React.Component<
                       swap.
                     </div>
                   </div>
-                  {loading && (
-                    <div className="form-group">
-                      <div className="col-sm-12">Loading task-definition revisions…</div>
-                    </div>
-                  )}
-                  {loadError && (
-                    <div className="form-group">
-                      <div className="col-sm-12">
-                        <ValidationMessage message={loadError} type="error" />
-                      </div>
-                    </div>
-                  )}
-                  {!loading && !loadError && targets.length === 0 && (
+                  {targets.length === 0 && (
                     <div className="form-group">
                       <div className="col-sm-12">
                         <ValidationMessage
@@ -225,7 +201,7 @@ export class EcsNativeRollbackServerGroupModal extends React.Component<
                       </div>
                     </div>
                   )}
-                  {!loading && targets.length > 0 && (
+                  {targets.length > 0 && (
                     <div className="form-group">
                       <div className="col-sm-3 sm-label-right">Roll back to</div>
                       <div className="col-sm-7">

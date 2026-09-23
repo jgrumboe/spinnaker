@@ -32,9 +32,11 @@ import com.netflix.spinnaker.clouddriver.ecs.cache.model.Task;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsServerCluster;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsServerGroup;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsTask;
+import com.netflix.spinnaker.clouddriver.ecs.model.EcsTaskDefinitionRevision;
 import com.netflix.spinnaker.clouddriver.ecs.model.TaskDefinition;
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials;
 import com.netflix.spinnaker.clouddriver.ecs.services.ContainerInformationService;
+import com.netflix.spinnaker.clouddriver.ecs.services.EcsTaskDefinitionRevisionService;
 import com.netflix.spinnaker.clouddriver.ecs.services.SubnetSelector;
 import com.netflix.spinnaker.clouddriver.model.ClusterProvider;
 import com.netflix.spinnaker.clouddriver.model.Instance;
@@ -73,6 +75,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
   private final CredentialsRepository<NetflixECSCredentials> credentialsRepository;
   private final ContainerInformationService containerInformationService;
   private final SubnetSelector subnetSelector;
+  private final EcsTaskDefinitionRevisionService ecsTaskDefinitionRevisionService;
 
   private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -86,7 +89,8 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
       ScalableTargetCacheClient scalableTargetCacheClient,
       EcsLoadbalancerCacheClient ecsLoadbalancerCacheClient,
       TaskDefinitionCacheClient taskDefinitionCacheClient,
-      EcsCloudWatchAlarmCacheClient ecsCloudWatchAlarmCacheClient) {
+      EcsCloudWatchAlarmCacheClient ecsCloudWatchAlarmCacheClient,
+      EcsTaskDefinitionRevisionService ecsTaskDefinitionRevisionService) {
     this.credentialsRepository = credentialsRepository;
     this.containerInformationService = containerInformationService;
     this.subnetSelector = subnetSelector;
@@ -96,6 +100,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
     this.taskDefinitionCacheClient = taskDefinitionCacheClient;
     this.ecsLoadbalancerCacheClient = ecsLoadbalancerCacheClient;
     this.ecsCloudWatchAlarmCacheClient = ecsCloudWatchAlarmCacheClient;
+    this.ecsTaskDefinitionRevisionService = ecsTaskDefinitionRevisionService;
   }
 
   private Map<String, Set<EcsServerCluster>> findClusters(
@@ -449,8 +454,17 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
     // EcsServerGroupNameResolver) with a numeric sequence. cloudProvider/type are stamped "ecs" for
     // both, so this moniker-derived flag is how Deck distinguishes a native service (e.g. to pick
     // the native task-definition-revision rollback instead of the classic disabled-sibling one).
-    if (moniker != null && moniker.getSequence() == null) {
+    boolean isNative = moniker != null && moniker.getSequence() == null;
+    if (isNative) {
       serverGroup.setIsNative(true);
+      // Only on the details path (opening a server group), and only for native services, attach
+      // the family's task-definition revisions so Deck's rollback picker can offer them. This is a
+      // live ECS call, so it is deliberately kept off the high-volume list/summary path
+      // (includeDetails == false) and off classic ecs services. Reuses the existing details
+      // endpoint/payload, so no new gate route is needed.
+      if (includeDetails) {
+        attachTaskDefinitionRevisions(serverGroup, account, region, service);
+      }
     }
     if (service != null) {
       serverGroup
@@ -468,6 +482,33 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
     // serverGroup.setAsg(asg);
 
     return serverGroup;
+  }
+
+  /**
+   * Attaches the family's task-definition revisions to a native server group for the rollback
+   * picker. Best-effort: any failure resolving credentials or calling ECS is logged and leaves the
+   * revisions unset rather than failing the whole details view (the picker then simply shows no
+   * options).
+   */
+  private void attachTaskDefinitionRevisions(
+      EcsServerGroup serverGroup, String account, String region, Service service) {
+    try {
+      NetflixECSCredentials credentials = credentialsRepository.getOne(account);
+      if (credentials == null) {
+        return;
+      }
+      List<EcsTaskDefinitionRevision> revisions =
+          ecsTaskDefinitionRevisionService.listRevisions(
+              credentials, region, service.getTaskDefinition());
+      serverGroup.setTaskDefinitionRevisions(revisions);
+    } catch (Exception e) {
+      log.warn(
+          "Failed to list task-definition revisions for ecs-native service {} in {}/{}",
+          serverGroup.getName(),
+          account,
+          region,
+          e);
+    }
   }
 
   private ServerGroup.InstanceCounts buildInstanceCount(Set<Instance> instances) {

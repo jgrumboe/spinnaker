@@ -45,6 +45,7 @@ import com.netflix.spinnaker.clouddriver.ecs.provider.agent.TaskCachingAgent
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials
 import com.netflix.spinnaker.clouddriver.ecs.provider.agent.TestServiceCachingAgentFactory
 import com.netflix.spinnaker.clouddriver.ecs.services.ContainerInformationService
+import com.netflix.spinnaker.clouddriver.ecs.services.EcsTaskDefinitionRevisionService
 import com.netflix.spinnaker.clouddriver.ecs.services.SubnetSelector
 import com.netflix.spinnaker.clouddriver.model.ServerGroup
 import com.netflix.spinnaker.credentials.CredentialsRepository
@@ -67,6 +68,7 @@ class EcsServerClusterProviderSpec extends Specification {
   def credentialsRepository = Mock(CredentialsRepository)
   def containerInformationService = Mock(ContainerInformationService)
   def subnetSelector =  Mock(SubnetSelector)
+  def ecsTaskDefinitionRevisionService = Mock(EcsTaskDefinitionRevisionService)
 
   @Subject
   def provider = new EcsServerClusterProvider(credentialsRepository,
@@ -77,7 +79,8 @@ class EcsServerClusterProviderSpec extends Specification {
     scalableTargetCacheClient,
     ecsLoadbalancerCacheClient,
     taskDefinitionCacheClient,
-    ecsCloudWatchAlarmCacheClient)
+    ecsCloudWatchAlarmCacheClient,
+    ecsTaskDefinitionRevisionService)
 
   software.amazon.awssdk.services.ecs.model.Service cachedService
   TaskDefinition cachedTaskDefinition

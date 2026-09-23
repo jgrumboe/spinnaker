@@ -22,6 +22,7 @@ import com.netflix.spinnaker.clouddriver.model.Instance;
 import com.netflix.spinnaker.clouddriver.model.ServerGroup;
 import com.netflix.spinnaker.moniker.Moniker;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.Data;
@@ -88,6 +89,13 @@ public class EcsServerGroup implements ServerGroup {
   // fields are (to reach both the details and clusters-summary payloads).
   @JsonIgnore Boolean isNative;
 
+  // The ACTIVE task-definition revisions of this service's family (newest first), populated only on
+  // the details path for a native service (see EcsServerClusterProvider). Deck's rollback picker
+  // reads these to offer an earlier revision to roll back to. Carried on the existing server-group
+  // details payload so no new gate endpoint is needed. Null/empty for classic services and for the
+  // list/summary (non-details) path.
+  @JsonIgnore List<EcsTaskDefinitionRevision> taskDefinitionRevisions;
+
   @Override
   public Boolean isDisabled() {
     return disabled;
@@ -118,6 +126,9 @@ public class EcsServerGroup implements ServerGroup {
     }
     if (Boolean.TRUE.equals(isNative)) {
       extraAttributes.put("isNative", true);
+    }
+    if (taskDefinitionRevisions != null) {
+      extraAttributes.put("taskDefinitionRevisions", taskDefinitionRevisions);
     }
     return extraAttributes;
   }
