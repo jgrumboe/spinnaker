@@ -48,7 +48,7 @@ export interface IEcsNativeRollbackServerGroupValues {
 }
 
 /**
- * The orca stage this submits ({@code rollbackEcsNativeServerGroup}) rolls the durable ecs-native
+ * The orca stage this submits ({@code ecsNativeRollbackServerGroup}) rolls the durable ecs-native
  * service to {@code taskDefinition} via a native in-place UpdateService, then waits on ECS's own
  * rollout state.
  */
@@ -141,7 +141,10 @@ export class EcsNativeRollbackServerGroupModal extends React.Component<
 
     const { application, serverGroup } = this.props;
     const command: IEcsNativeRollbackServerGroupJob = {
-      type: 'rollbackEcsNativeServerGroup',
+      // Orca registers the stage type from the class name (EcsNativeRollbackServerGroupStage ->
+      // ecsNativeRollbackServerGroup), not from its PIPELINE_CONFIG_TYPE constant, so this must be
+      // the camelCase class-derived name.
+      type: 'ecsNativeRollbackServerGroup',
       cloudProvider: 'ecs-native',
       credentials: serverGroup.account,
       region: serverGroup.region,

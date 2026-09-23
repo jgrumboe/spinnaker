@@ -40,7 +40,9 @@ import org.springframework.stereotype.Component
 @Component
 @CompileStatic
 class EcsNativeRollbackServerGroupStage implements StageDefinitionBuilder {
-  public static final String PIPELINE_CONFIG_TYPE = "rollbackEcsNativeServerGroup"
+  // The registered stage type is derived from the class name (StageDefinitionBuilder.getType),
+  // i.e. "ecsNativeRollbackServerGroup". Deck submits that value. Keep this constant in sync.
+  public static final String PIPELINE_CONFIG_TYPE = StageDefinitionBuilder.getType(EcsNativeRollbackServerGroupStage)
 
   @Override
   void taskGraph(@Nonnull StageExecution stage, @Nonnull TaskNode.Builder builder) {
