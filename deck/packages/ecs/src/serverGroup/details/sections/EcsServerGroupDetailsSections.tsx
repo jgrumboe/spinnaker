@@ -3,44 +3,21 @@ import React from 'react';
 import type { IServerGroupDetailsSectionProps } from '@spinnaker/core';
 import { CollapsibleSection, FirewallLabels, HealthCounts } from '@spinnaker/core';
 
-import type { IEcsDeploymentStatus } from '../ecsDeploymentStatusReader';
-import { EcsDeploymentStatusReader } from '../ecsDeploymentStatusReader';
-
 export function EcsDeploymentSection({ serverGroup }: IServerGroupDetailsSectionProps) {
   const sg = serverGroup as any;
   const taskDefinitionRevision = sg.taskDefinitionRevision;
+  const rolloutState: string | undefined = sg.rolloutState;
+  const rolloutStateReason: string | undefined = sg.rolloutStateReason;
+  const deploymentId: string | undefined = sg.deploymentId;
 
-  // The rollout state is fetched LIVE (not read from the cached server group) so the details pane
-  // reflects the true in-flight rollout: clouddriver's cached clusters payload can lag a deploy by
-  // a caching cycle, which would otherwise show a stale COMPLETED mid-rollout or a stale IN_PROGRESS
-  // just after it settles. The task-definition revision comes from the (stable) cached server group.
-  const [status, setStatus] = React.useState<IEcsDeploymentStatus | null>(null);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    EcsDeploymentStatusReader.getDeploymentStatus(serverGroup.account, serverGroup.region, serverGroup.name)
-      .then((result) => {
-        if (!cancelled) {
-          setStatus(result);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setStatus(null);
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [serverGroup.account, serverGroup.region, serverGroup.name]);
+  // These come from the server-group details payload, which clouddriver serializes from the full
+  // EcsServerGroup (rollout fields flattened via @JsonAnyGetter). The values are cached, but the
+  // ecs-native deploy stage runs a forceCacheRefresh AFTER ECS reports the rollout COMPLETED, so
+  // the cache is fresh by the time a deploy finishes rather than lagging a caching cycle.
 
   // Omit the section entirely when there's nothing ECS-deployment-specific to show (e.g. a classic
-  // ecs service with no revision and no live rollout status).
-  if (taskDefinitionRevision == null && !loading && status == null) {
+  // ecs service with no revision and no rollout state).
+  if (taskDefinitionRevision == null && rolloutState == null) {
     return null;
   }
 
@@ -53,33 +30,22 @@ export function EcsDeploymentSection({ serverGroup }: IServerGroupDetailsSection
             <dd>{taskDefinitionRevision}</dd>
           </>
         )}
-        {loading && (
+        {rolloutState != null && (
           <>
             <dt>Rollout State</dt>
-            <dd>Loading...</dd>
+            <dd>{rolloutState}</dd>
           </>
         )}
-        {!loading && status != null && (
+        {rolloutStateReason != null && (
           <>
-            <dt>Rollout State</dt>
-            <dd>{status.rolloutState}</dd>
-            {status.rolloutStateReason != null && (
-              <>
-                <dt>Reason</dt>
-                <dd>{status.rolloutStateReason}</dd>
-              </>
-            )}
-            <dt>Tasks</dt>
-            <dd>
-              {status.runningCount} running, {status.pendingCount} pending
-              {status.failedTasks > 0 ? `, ${status.failedTasks} failed` : ''} / {status.desiredCount} desired
-            </dd>
-            {status.deploymentId != null && (
-              <>
-                <dt>Deployment ID</dt>
-                <dd>{status.deploymentId}</dd>
-              </>
-            )}
+            <dt>Reason</dt>
+            <dd>{rolloutStateReason}</dd>
+          </>
+        )}
+        {deploymentId != null && (
+          <>
+            <dt>Deployment ID</dt>
+            <dd>{deploymentId}</dd>
           </>
         )}
       </dl>

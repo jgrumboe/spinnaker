@@ -1,10 +1,8 @@
 import React from 'react';
-import { mount, shallow } from 'enzyme';
-import React from 'react';
+import { shallow } from 'enzyme';
 
 import { CollapsibleSection, HealthCounts } from '@spinnaker/core';
 
-import { EcsDeploymentStatusReader } from '../ecsDeploymentStatusReader';
 import {
   EcsBuildInfoSection,
   EcsCapacitySection,
@@ -18,10 +16,6 @@ import {
 import { EcsServerGroupInformationSection } from './EcsServerGroupInformationSection';
 import { EventsLink } from '../../events/EventsLink';
 import { EcsServerGroupEventsSection } from './EcsServerGroupEventsSection';
-
-// Flush pending microtasks (the reader promise + effect state updates) so mount() reflects the
-// resolved live deployment status.
-const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('ECS server group details sections', () => {
   const serverGroup = {
@@ -135,50 +129,37 @@ describe('ECS server group details sections', () => {
     expect(wrapper.find(EventsLink).prop('serverGroup')).toBe(serverGroup);
   });
 
-  it('renders the ECS deployment section with the cached revision and LIVE rollout state', async () => {
-    spyOn(EcsDeploymentStatusReader, 'getDeploymentStatus').and.returnValue(
-      Promise.resolve({
-        serviceName: 'myapp-production-native',
-        clusterArn: 'arn:aws:ecs:eu-central-1:123:cluster/ps-cluster',
-        deploymentId: 'ecs-svc/1234567890',
-        rolloutState: 'COMPLETED',
-        rolloutStateReason: 'ECS deployment completed.',
-        status: 'PRIMARY',
-        desiredCount: 1,
-        runningCount: 1,
-        pendingCount: 0,
-        failedTasks: 0,
-        createdAt: 1,
-        updatedAt: 2,
-      }),
+  it('renders the ECS deployment section with revision and rollout state', () => {
+    const wrapper = shallow(
+      <EcsDeploymentSection
+        {...props}
+        serverGroup={
+          {
+            ...serverGroup,
+            taskDefinitionRevision: 42,
+            rolloutState: 'COMPLETED',
+            rolloutStateReason: 'ECS deployment completed.',
+            deploymentId: 'ecs-svc/1234567890',
+          } as any
+        }
+      />,
     );
+    const text = sectionContent(wrapper).text();
 
-    const wrapper = mount(
-      <EcsDeploymentSection {...props} serverGroup={{ ...serverGroup, taskDefinitionRevision: 42 } as any} />,
-    );
-    await flushPromises();
-    wrapper.update();
-
-    expect(EcsDeploymentStatusReader.getDeploymentStatus).toHaveBeenCalledWith('test', 'us-east-1', undefined);
-    const text = wrapper.text();
-    // revision from the cached server group
     expect(text).toContain('42');
-    // rollout state + counts from the live endpoint
     expect(text).toContain('COMPLETED');
     expect(text).toContain('ECS deployment completed.');
-    expect(text).toContain('1 running, 0 pending / 1 desired');
     expect(text).toContain('ecs-svc/1234567890');
   });
 
-  it('omits the ECS deployment section when there is no revision and no live status', async () => {
-    spyOn(EcsDeploymentStatusReader, 'getDeploymentStatus').and.returnValue(Promise.resolve(null));
-
-    const wrapper = mount(
-      <EcsDeploymentSection {...props} serverGroup={{ ...serverGroup, taskDefinitionRevision: undefined } as any} />,
+  it('omits the ECS deployment section when there is nothing to show', () => {
+    const wrapper = shallow(
+      <EcsDeploymentSection
+        {...props}
+        serverGroup={{ ...serverGroup, taskDefinitionRevision: undefined, rolloutState: undefined } as any}
+      />,
     );
-    await flushPromises();
-    wrapper.update();
 
-    expect(wrapper.find(CollapsibleSection).length).toBe(0);
+    expect(wrapper.isEmptyRender()).toBe(true);
   });
 });
