@@ -24,6 +24,7 @@ import java.util.List;
 import org.springframework.stereotype.Component;
 
 @EcsOperation(AtomicOperations.UPSERT_SCALING_POLICY)
+@EcsNativeOperation(AtomicOperations.UPSERT_SCALING_POLICY)
 @Component("upsertScalingPolicyAtomicOperationValidator")
 public class UpsertScalingPolicyAtomicOperationValidator extends DescriptionValidator {
 

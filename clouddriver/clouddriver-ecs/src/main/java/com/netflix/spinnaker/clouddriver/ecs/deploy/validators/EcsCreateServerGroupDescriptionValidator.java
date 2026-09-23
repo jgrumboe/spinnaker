@@ -18,8 +18,10 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.validators;
 
 import com.google.common.collect.Sets;
 import com.netflix.spinnaker.clouddriver.deploy.ValidationErrors;
+import com.netflix.spinnaker.clouddriver.ecs.EcsNativeOperation;
 import com.netflix.spinnaker.clouddriver.ecs.EcsOperation;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription;
+import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.moniker.Moniker;
 import java.util.Collections;
@@ -31,6 +33,7 @@ import software.amazon.awssdk.services.ecs.model.PlacementStrategy;
 import software.amazon.awssdk.services.ecs.model.PlacementStrategyType;
 
 @EcsOperation(AtomicOperations.CREATE_SERVER_GROUP)
+@EcsNativeOperation(AtomicOperations.CREATE_SERVER_GROUP)
 @Component("ecsCreateServerGroupDescriptionValidator")
 public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
 
@@ -205,6 +208,65 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
           RESERVED_ENVIRONMENT_VARIABLES)) {
         rejectValue(errors, "environmentVariables", "invalid");
       }
+    }
+
+    if (createServerGroupDescription instanceof EcsNativeCreateServerGroupDescription) {
+      validateNativeFields(
+          (EcsNativeCreateServerGroupDescription) createServerGroupDescription, errors);
+    }
+  }
+
+  private void validateNativeFields(
+      EcsNativeCreateServerGroupDescription description, ValidationErrors errors) {
+    Integer minimumHealthyPercent = description.getMinimumHealthyPercent();
+    if (minimumHealthyPercent != null
+        && (minimumHealthyPercent < 1 || minimumHealthyPercent > 100)) {
+      rejectValue(errors, "minimumHealthyPercent", "invalid");
+    }
+
+    Integer maximumPercent = description.getMaximumPercent();
+    if (maximumPercent != null && maximumPercent < 100) {
+      rejectValue(errors, "maximumPercent", "invalid");
+    }
+    if (minimumHealthyPercent != null
+        && maximumPercent != null
+        && maximumPercent < minimumHealthyPercent) {
+      rejectValue(errors, "maximumPercent", "less.than.minimumHealthyPercent");
+    }
+
+    if (description.getBakeTimeInMinutes() != null && description.getBakeTimeInMinutes() < 0) {
+      rejectValue(errors, "bakeTimeInMinutes", "invalid");
+    }
+
+    if (StringUtils.isNotBlank(description.getDeploymentStrategy())
+        && !StringUtils.equalsIgnoreCase(description.getDeploymentStrategy(), "ROLLING")
+        && !StringUtils.equalsIgnoreCase(description.getDeploymentStrategy(), "BLUE_GREEN")) {
+      rejectValue(errors, "deploymentStrategy", "invalid");
+    }
+
+    boolean hasAlarmNames =
+        description.getAlarmNames() != null
+            && description.getAlarmNames().stream().anyMatch(StringUtils::isNotBlank);
+    if (description.isEnableDeploymentAlarms() && !hasAlarmNames) {
+      rejectValue(errors, "alarmNames", "not.nullable");
+    }
+
+    boolean hasLoadBalancer =
+        StringUtils.isNotBlank(description.getTargetGroup())
+            || (description.getTargetGroupMappings() != null
+                && !description.getTargetGroupMappings().isEmpty());
+    boolean hasAnyTrafficShiftField =
+        StringUtils.isNotBlank(description.getAlternateTargetGroupArn())
+            || StringUtils.isNotBlank(description.getProductionListenerRule())
+            || StringUtils.isNotBlank(description.getTestListenerRule())
+            || StringUtils.isNotBlank(description.getBlueGreenRoleArn());
+    boolean hasAllTrafficShiftFields =
+        StringUtils.isNotBlank(description.getAlternateTargetGroupArn())
+            && StringUtils.isNotBlank(description.getProductionListenerRule())
+            && StringUtils.isNotBlank(description.getTestListenerRule())
+            && StringUtils.isNotBlank(description.getBlueGreenRoleArn());
+    if (hasLoadBalancer && hasAnyTrafficShiftField && !hasAllTrafficShiftFields) {
+      rejectValue(errors, "alternateTargetGroupArn", "incomplete");
     }
   }
 
