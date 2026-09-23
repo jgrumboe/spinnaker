@@ -17,7 +17,6 @@
 package com.netflix.spinnaker.clouddriver.ecs.controllers;
 
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider;
-import com.netflix.spinnaker.clouddriver.aws.security.NetflixAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient;
 import com.netflix.spinnaker.clouddriver.ecs.cache.model.Service;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsServiceDeploymentStatus;
@@ -28,6 +27,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -74,19 +74,45 @@ public class EcsNativeServiceDeploymentController {
     this.serviceCacheClient = serviceCacheClient;
   }
 
+  /**
+   * Resolves an ECS account by name, tolerating case differences. Deck may send the account in a
+   * different case than the credential is registered under (e.g. the pipeline/moniker-derived
+   * account id is upper-cased while the credential name is lower-case), and {@code
+   * CredentialsRepository.getOne} is case-sensitive. Falls back to a case-insensitive scan so the
+   * ecs-native read endpoints resolve the same account the rest of the UI shows. Returns null if no
+   * ECS account matches.
+   */
+  private NetflixECSCredentials resolveCredentials(String account) {
+    NetflixECSCredentials exact = credentialsRepository.getOne(account);
+    if (exact != null) {
+      return exact;
+    }
+    if (account == null) {
+      return null;
+    }
+    Set<? extends NetflixECSCredentials> all = credentialsRepository.getAll();
+    if (all == null) {
+      return null;
+    }
+    return all.stream().filter(c -> account.equalsIgnoreCase(c.getName())).findFirst().orElse(null);
+  }
+
   @RequestMapping(value = "/deploymentStatus", method = RequestMethod.GET)
   ResponseEntity<?> getDeploymentStatus(
       @PathVariable String account,
       @PathVariable String region,
       @PathVariable String serverGroupName) {
-    NetflixAmazonCredentials credentials = credentialsRepository.getOne(account);
+    NetflixECSCredentials credentials = resolveCredentials(account);
     if (credentials == null) {
       return new ResponseEntity<>(
           String.format("Account %s is not an ECS account", account), HttpStatus.BAD_REQUEST);
     }
+    // Cache keys are written with the credential's actual-case name, so look up by the resolved
+    // name rather than the (possibly differently-cased) path value.
+    String resolvedAccount = credentials.getName();
 
     Optional<Service> cachedService =
-        serviceCacheClient.getAll(account, region).stream()
+        serviceCacheClient.getAll(resolvedAccount, region).stream()
             .filter(service -> service.getServiceName().equals(serverGroupName))
             .findFirst();
     if (cachedService.isEmpty()) {
@@ -147,14 +173,15 @@ public class EcsNativeServiceDeploymentController {
       @PathVariable String account,
       @PathVariable String region,
       @PathVariable String serverGroupName) {
-    NetflixAmazonCredentials credentials = credentialsRepository.getOne(account);
+    NetflixECSCredentials credentials = resolveCredentials(account);
     if (credentials == null) {
       return new ResponseEntity<>(
           String.format("Account %s is not an ECS account", account), HttpStatus.BAD_REQUEST);
     }
+    String resolvedAccount = credentials.getName();
 
     Optional<Service> cachedService =
-        serviceCacheClient.getAll(account, region).stream()
+        serviceCacheClient.getAll(resolvedAccount, region).stream()
             .filter(service -> service.getServiceName().equals(serverGroupName))
             .findFirst();
     if (cachedService.isEmpty()) {

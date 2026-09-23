@@ -17,7 +17,6 @@
 package com.netflix.spinnaker.clouddriver.ecs.controllers
 
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider
-import com.netflix.spinnaker.clouddriver.aws.security.NetflixAmazonCredentials
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient
 import com.netflix.spinnaker.clouddriver.ecs.cache.model.Service
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials
@@ -60,9 +59,26 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
     response.statusCode == HttpStatus.BAD_REQUEST
   }
 
+  def 'resolves the account case-insensitively when the exact case is not registered'() {
+    given:
+    // Deck may send the account upper-cased (from the moniker/pipeline context) while the ECS
+    // credential is registered lower-case; getOne is case-sensitive, so we fall back to a scan.
+    credentialsRepository.getOne('FGATE-PS-PRODUCTION') >> null
+    credentialsRepository.getAll() >> [Mock(NetflixECSCredentials) { getName() >> 'fgate-ps-production' }]
+    // The cache lookup must use the resolved (actual-case) account name.
+    serviceCacheClient.getAll('fgate-ps-production', 'eu-central-1') >> []
+
+    when:
+    def response = controller.listTaskDefinitions('FGATE-PS-PRODUCTION', 'eu-central-1', 'myapp')
+
+    then:
+    // Account resolved (not a 400); 404 only because the (empty) cache has no such service.
+    response.statusCode == HttpStatus.NOT_FOUND
+  }
+
   def 'returns 404 when the service is not in the cache'() {
     given:
-    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
     serviceCacheClient.getAll('test', 'us-west-2') >> []
 
     when:
@@ -74,7 +90,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
 
   def 'returns 404 when ECS has no PRIMARY deployment for the service'() {
     given:
-    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
     def cachedService = new Service(serviceName: 'myapp-v001', clusterArn: 'cluster-arn')
     serviceCacheClient.getAll('test', 'us-west-2') >> [cachedService]
     amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
@@ -93,7 +109,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
 
   def 'maps the PRIMARY deployment rollout state onto the response'() {
     given:
-    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
     def cachedService = new Service(serviceName: 'myapp-v001', clusterArn: 'cluster-arn')
     serviceCacheClient.getAll('test', 'us-west-2') >> [cachedService]
     amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
@@ -142,7 +158,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
 
   def 'listTaskDefinitions returns 404 when the service is not in the cache'() {
     given:
-    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
     serviceCacheClient.getAll('test', 'us-west-2') >> []
 
     when:
@@ -154,7 +170,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
 
   def 'listTaskDefinitions lists ACTIVE revisions newest-first and flags the current one'() {
     given:
-    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
     def cachedService = new Service(
       serviceName: 'myapp',
       clusterArn: 'cluster-arn',
@@ -210,7 +226,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
 
   def 'listTaskDefinitions requests ACTIVE revisions for the service family, newest first'() {
     given:
-    credentialsRepository.getOne('test') >> Mock(NetflixAmazonCredentials)
+    credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
     def cachedService = new Service(
       serviceName: 'myapp',
       clusterArn: 'cluster-arn',

@@ -410,6 +410,12 @@ public interface ClouddriverService {
       @Query("region") String region,
       @Query("provider") String provider);
 
+  @GET("ecs-native/serverGroups/{account}/{region}/{serverGroupName}/taskDefinitions")
+  Call<List<Map>> getEcsNativeTaskDefinitions(
+      @Path(value = "account") String account,
+      @Path(value = "region") String region,
+      @Path(value = "serverGroupName") String serverGroupName);
+
   @GET("servicebroker/{account}/services")
   Call<List<Map>> listServices(
       @Path(value = "account") String account,
