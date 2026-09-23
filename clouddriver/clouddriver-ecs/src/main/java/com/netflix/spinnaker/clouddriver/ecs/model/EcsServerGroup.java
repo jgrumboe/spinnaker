@@ -16,9 +16,12 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.model;
 
+import com.fasterxml.jackson.annotation.JsonAnyGetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.netflix.spinnaker.clouddriver.model.Instance;
 import com.netflix.spinnaker.clouddriver.model.ServerGroup;
 import com.netflix.spinnaker.moniker.Moniker;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import lombok.Data;
@@ -56,18 +59,54 @@ public class EcsServerGroup implements ServerGroup {
   // for ".../my-family:42"). For the ecs-native provider this is the closest analog to the classic
   // vNNN server-group sequence, since a native service has no sequence and rolls new task-def
   // revisions in place. Null if the revision could not be parsed from the ARN.
-  Integer taskDefinitionRevision;
+  //
+  // This and the rollout fields below are @JsonIgnore-d as top-level bean properties and instead
+  // emitted through getExtraAttributes() (@JsonAnyGetter). That is deliberate: the clusters-view
+  // summary payload is produced by clouddriver-web's hand-written ServerGroupViewModel DTO, which
+  // copies only a fixed whitelist of fields plus whatever getExtraAttributes() returns. Routing
+  // these through extraAttributes is the only way to get them onto the summary payload (and thus
+  // the Deck clusters-view card header) without editing that shared, provider-agnostic DTO. On the
+  // full-object/details serialization path they still appear flattened at the top level, so Deck
+  // reads serverGroup.taskDefinitionRevision / rolloutState the same way in both views.
+  @JsonIgnore Integer taskDefinitionRevision;
 
   // ECS's own rollout state for the service's PRIMARY deployment (IN_PROGRESS / COMPLETED /
   // FAILED), plumbed through from the cached Service. Lets Deck show whether ECS considers the
-  // current deployment settled. Null when unavailable.
-  String deploymentId;
-  String rolloutState;
-  String rolloutStateReason;
+  // current deployment settled. Null when unavailable. (The details pane fetches this live rather
+  // than from here; this cached value backs the always-on clusters-view card header.)
+  @JsonIgnore String deploymentId;
+  @JsonIgnore String rolloutState;
+  @JsonIgnore String rolloutStateReason;
 
   @Override
   public Boolean isDisabled() {
     return disabled;
+  }
+
+  /**
+   * Surfaces the ecs-native-specific fields above as flattened top-level JSON keys. Consumed both
+   * by the full-object serialization path (details view) and, crucially, by clouddriver-web's
+   * {@code ServerGroupViewModel} summary DTO, which forwards {@code getExtraAttributes()} via its
+   * own {@code @JsonAnyGetter} -- that is how these reach the Deck clusters-view card header. Only
+   * non-null values are emitted so classic {@code ecs} server groups (which never set these) add
+   * nothing to their payload.
+   */
+  @JsonAnyGetter
+  public Map<String, Object> getExtraAttributes() {
+    Map<String, Object> extraAttributes = new LinkedHashMap<>();
+    if (taskDefinitionRevision != null) {
+      extraAttributes.put("taskDefinitionRevision", taskDefinitionRevision);
+    }
+    if (deploymentId != null) {
+      extraAttributes.put("deploymentId", deploymentId);
+    }
+    if (rolloutState != null) {
+      extraAttributes.put("rolloutState", rolloutState);
+    }
+    if (rolloutStateReason != null) {
+      extraAttributes.put("rolloutStateReason", rolloutStateReason);
+    }
+    return extraAttributes;
   }
 
   @Data

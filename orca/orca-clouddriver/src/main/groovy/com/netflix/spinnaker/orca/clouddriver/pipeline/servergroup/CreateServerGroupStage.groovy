@@ -84,20 +84,21 @@ class CreateServerGroupStage extends AbstractDeployStrategyStage implements Forc
       tasks << TaskNode.task("tagServerGroup", AddServerGroupEntityTagsTask)
     }
 
-    tasks << TaskNode.task("waitForUpInstances", WaitForUpInstancesTask)
-
-    if (isForceCacheRefreshEnabled(dynamicConfigService)) {
-      tasks << TaskNode.task("forceCacheRefresh", ServerGroupCacheForceRefreshTask)
-    }
-
     // For ecs-native, waitForUpInstances alone is not a real gate on the new revision: the provider
     // keeps a single durable ECS service updated in place, so its desiredCount is trivially satisfied
     // by the still-RUNNING old-revision task while the new revision is mid-rollout (and an ECS task
-    // counts as "up" on lastStatus==RUNNING, before ALB registration). Append a wait on ECS's own
-    // deployment rolloutState so the stage only succeeds once ECS reports COMPLETED (and fails if the
-    // deployment circuit breaker rolled it back). Gated to ecs-native so classic ecs and every other
-    // provider are unaffected. Runs last, after the cache refresh, so deploy.server.groups is set and
-    // the service is cached for the task's account/region/serverGroupName resolution.
+    // counts as "up" on lastStatus==RUNNING, before ALB registration). Wait on ECS's own deployment
+    // rolloutState so the stage only proceeds once ECS reports COMPLETED (and fails if the deployment
+    // circuit breaker rolled it back). Gated to ecs-native so classic ecs and every other provider
+    // are unaffected.
+    //
+    // Ordering matters: this wait runs *between* the two forceCacheRefresh tasks (after the first
+    // refresh + tagging, before waitForUpInstances and the trailing refresh). That places the final
+    // forceCacheRefresh *after* ECS has settled to COMPLETED, so the refresh pulls the completed
+    // rollout state into clouddriver's cache immediately instead of leaving the clusters-view card
+    // header stale at IN_PROGRESS until the next scheduled caching cycle. It also relies on
+    // deploy.server.groups (set by createServerGroup) being present for the task's
+    // account/region/serverGroupName resolution, which it is by this point.
     if (ECS_NATIVE_CLOUD_PROVIDER == getCloudProvider(stage)) {
       // ecs-native deploys to a single durable ECS service in place and lets ECS's own deployment
       // strategy (ROLLING / BLUE_GREEN) drive the rollout. A Spinnaker red/black-style strategy
@@ -113,6 +114,12 @@ class CreateServerGroupStage extends AbstractDeployStrategyStage implements Forc
       }
 
       tasks << TaskNode.task("waitForEcsNativeServiceDeployment", WaitForEcsNativeServiceDeploymentTask)
+    }
+
+    tasks << TaskNode.task("waitForUpInstances", WaitForUpInstancesTask)
+
+    if (isForceCacheRefreshEnabled(dynamicConfigService)) {
+      tasks << TaskNode.task("forceCacheRefresh", ServerGroupCacheForceRefreshTask)
     }
 
     return tasks

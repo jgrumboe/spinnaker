@@ -3,14 +3,44 @@ import React from 'react';
 import type { IServerGroupDetailsSectionProps } from '@spinnaker/core';
 import { CollapsibleSection, FirewallLabels, HealthCounts } from '@spinnaker/core';
 
+import type { IEcsDeploymentStatus } from '../ecsDeploymentStatusReader';
+import { EcsDeploymentStatusReader } from '../ecsDeploymentStatusReader';
+
 export function EcsDeploymentSection({ serverGroup }: IServerGroupDetailsSectionProps) {
   const sg = serverGroup as any;
-  const rolloutState: string | undefined = sg.rolloutState;
   const taskDefinitionRevision = sg.taskDefinitionRevision;
 
-  // Nothing ECS-deployment-specific to show (e.g. a classic service whose rollout state wasn't
-  // cached, or an older cache entry) -- omit the section entirely rather than render blanks.
-  if (rolloutState == null && taskDefinitionRevision == null) {
+  // The rollout state is fetched LIVE (not read from the cached server group) so the details pane
+  // reflects the true in-flight rollout: clouddriver's cached clusters payload can lag a deploy by
+  // a caching cycle, which would otherwise show a stale COMPLETED mid-rollout or a stale IN_PROGRESS
+  // just after it settles. The task-definition revision comes from the (stable) cached server group.
+  const [status, setStatus] = React.useState<IEcsDeploymentStatus | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    EcsDeploymentStatusReader.getDeploymentStatus(serverGroup.account, serverGroup.region, serverGroup.name)
+      .then((result) => {
+        if (!cancelled) {
+          setStatus(result);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStatus(null);
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [serverGroup.account, serverGroup.region, serverGroup.name]);
+
+  // Omit the section entirely when there's nothing ECS-deployment-specific to show (e.g. a classic
+  // ecs service with no revision and no live rollout status).
+  if (taskDefinitionRevision == null && !loading && status == null) {
     return null;
   }
 
@@ -23,22 +53,33 @@ export function EcsDeploymentSection({ serverGroup }: IServerGroupDetailsSection
             <dd>{taskDefinitionRevision}</dd>
           </>
         )}
-        {rolloutState != null && (
+        {loading && (
           <>
             <dt>Rollout State</dt>
-            <dd>{rolloutState}</dd>
+            <dd>Loading...</dd>
           </>
         )}
-        {sg.rolloutStateReason != null && (
+        {!loading && status != null && (
           <>
-            <dt>Reason</dt>
-            <dd>{sg.rolloutStateReason}</dd>
-          </>
-        )}
-        {sg.deploymentId != null && (
-          <>
-            <dt>Deployment ID</dt>
-            <dd>{sg.deploymentId}</dd>
+            <dt>Rollout State</dt>
+            <dd>{status.rolloutState}</dd>
+            {status.rolloutStateReason != null && (
+              <>
+                <dt>Reason</dt>
+                <dd>{status.rolloutStateReason}</dd>
+              </>
+            )}
+            <dt>Tasks</dt>
+            <dd>
+              {status.runningCount} running, {status.pendingCount} pending
+              {status.failedTasks > 0 ? `, ${status.failedTasks} failed` : ''} / {status.desiredCount} desired
+            </dd>
+            {status.deploymentId != null && (
+              <>
+                <dt>Deployment ID</dt>
+                <dd>{status.deploymentId}</dd>
+              </>
+            )}
           </>
         )}
       </dl>

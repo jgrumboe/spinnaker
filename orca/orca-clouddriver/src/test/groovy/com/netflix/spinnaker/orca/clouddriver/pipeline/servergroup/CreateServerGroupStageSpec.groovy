@@ -174,6 +174,43 @@ class CreateServerGroupStageSpec extends Specification {
     null          | false
   }
 
+  def "for ecs-native, waitForEcsNativeServiceDeployment runs before waitForUpInstances so the trailing forceCacheRefresh captures the settled rollout state"() {
+    given:
+    def featuresService = Mock(FeaturesService) {
+      areEntityTagsAvailable() >> false
+    }
+    // Enable force-cache-refresh so both refresh tasks are present and we can assert the ecs-native
+    // wait lands between them.
+    def dynamicConfigService = Mock(DynamicConfigService) {
+      isEnabled("stages.create-server-group-stage.force-cache-refresh.enabled", true) >> true
+    }
+    def stageForProvider = new CreateServerGroupStage(
+        featuresService,
+        new RollbackClusterStage(),
+        new DestroyServerGroupStage(dynamicConfigService),
+        dynamicConfigService)
+
+    def stage = stage {
+      context = [
+        "application"  : "myapplication",
+        "account"      : "test",
+        "cloudProvider": "ecs-native",
+      ]
+    }
+
+    when:
+    def taskNames = stageForProvider.basicTasks(stage)*.name
+
+    then:
+    // waitForEcsNativeServiceDeployment must precede waitForUpInstances...
+    taskNames.indexOf("waitForEcsNativeServiceDeployment") < taskNames.indexOf("waitForUpInstances")
+    // ...and there must be a forceCacheRefresh after it, so the settled COMPLETED state is cached.
+    taskNames.lastIndexOf("forceCacheRefresh") > taskNames.indexOf("waitForEcsNativeServiceDeployment")
+    // Two refresh tasks bracket the ecs-native wait + waitForUpInstances.
+    taskNames.count { it == "forceCacheRefresh" } == 2
+    taskNames.indexOf("forceCacheRefresh") < taskNames.indexOf("waitForEcsNativeServiceDeployment")
+  }
+
   @Unroll
   def "ecs-native rejects a non-None Spinnaker deployment strategy (strategy=#strategy)"() {
     given:
