@@ -124,6 +124,20 @@ public class ServiceCachingAgent extends AbstractEcsOnDemandAgent<Service> {
     attributes.put("createdAt", service.createdAt().toEpochMilli());
     attributes.put("moniker", moniker);
 
+    // Capture ECS's own rollout state for the PRIMARY deployment. This comes from the same
+    // DescribeServices response already fetched above (no extra AWS call), and lets Deck show
+    // whether the current deployment is settled -- especially for ecs-native services, which have
+    // no vNNN sequence to display. Absent for the EXTERNAL/CODE_DEPLOY deployment controllers.
+    service.deployments().stream()
+        .filter(deployment -> "PRIMARY".equals(deployment.status()))
+        .findFirst()
+        .ifPresent(
+            deployment -> {
+              attributes.put("deploymentId", deployment.id());
+              attributes.put("rolloutState", deployment.rolloutStateAsString());
+              attributes.put("rolloutStateReason", deployment.rolloutStateReason());
+            });
+
     return attributes;
   }
 

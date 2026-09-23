@@ -3,6 +3,49 @@ import React from 'react';
 import type { IServerGroupDetailsSectionProps } from '@spinnaker/core';
 import { CollapsibleSection, FirewallLabels, HealthCounts } from '@spinnaker/core';
 
+export function EcsDeploymentSection({ serverGroup }: IServerGroupDetailsSectionProps) {
+  const sg = serverGroup as any;
+  const rolloutState: string | undefined = sg.rolloutState;
+  const taskDefinitionRevision = sg.taskDefinitionRevision;
+
+  // Nothing ECS-deployment-specific to show (e.g. a classic service whose rollout state wasn't
+  // cached, or an older cache entry) -- omit the section entirely rather than render blanks.
+  if (rolloutState == null && taskDefinitionRevision == null) {
+    return null;
+  }
+
+  return (
+    <CollapsibleSection heading="Deployment (ECS)" defaultExpanded={true}>
+      <dl className="dl-horizontal dl-narrow">
+        {taskDefinitionRevision != null && (
+          <>
+            <dt>Task Def Revision</dt>
+            <dd>{taskDefinitionRevision}</dd>
+          </>
+        )}
+        {rolloutState != null && (
+          <>
+            <dt>Rollout State</dt>
+            <dd>{rolloutState}</dd>
+          </>
+        )}
+        {sg.rolloutStateReason != null && (
+          <>
+            <dt>Reason</dt>
+            <dd>{sg.rolloutStateReason}</dd>
+          </>
+        )}
+        {sg.deploymentId != null && (
+          <>
+            <dt>Deployment ID</dt>
+            <dd>{sg.deploymentId}</dd>
+          </>
+        )}
+      </dl>
+    </CollapsibleSection>
+  );
+}
+
 export function EcsTaskDefinitionSection({ serverGroup }: IServerGroupDetailsSectionProps) {
   const taskDefinition = (serverGroup as any).taskDefinition || {};
   return (

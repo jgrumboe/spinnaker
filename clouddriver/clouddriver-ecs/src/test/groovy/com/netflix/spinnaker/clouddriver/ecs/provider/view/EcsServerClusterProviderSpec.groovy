@@ -395,6 +395,52 @@ class EcsServerClusterProviderSpec extends Specification {
     retrievedClusters.sort() == [expectedCluster, expectedCluster2].sort()
   }
 
+  def 'should surface the task definition revision and ECS rollout state on the server group'() {
+    given: 'a cached service with a PRIMARY deployment and a task-definition ARN carrying a revision'
+    def creds = Mock(NetflixECSCredentials)
+    creds.getCloudProvider() >> 'ecs'
+    creds.getName() >> CREDS_NAME
+    creds.getRegions() >> [new AmazonCredentials.AWSRegion('us-east-1', ['us-east-1b', 'us-east-1c', 'us-east-1d']),
+                           new AmazonCredentials.AWSRegion('us-west-1', ['us-west-1b', 'us-west-1c', 'us-west-1d'])]
+
+    def serviceWithDeployment = cachedService.toBuilder()
+      .deployments(
+        software.amazon.awssdk.services.ecs.model.Deployment.builder()
+          .status('PRIMARY')
+          .id('ecs-svc/9876543210')
+          .rolloutState('IN_PROGRESS')
+          .rolloutStateReason('ECS deployment is in progress.')
+          .build())
+      .build()
+
+    def serviceAttributes = TestServiceCachingAgentFactory.create(creds, creds.getRegions()[0].getName()).convertServiceToAttributes(serviceWithDeployment)
+    def serviceCacheData = new DefaultCacheData('', serviceAttributes, [:])
+
+    cachedTaskDefinition = TaskDefinition.builder()
+      .taskDefinitionArn('arn:aws:ecs:us-west-1:123456789012:task-definition/myapp-stack-detail:42')
+      .containerDefinitions(
+        ContainerDefinition.builder()
+          .image('my-image')
+          .memoryReservation(256)
+          .cpu(123)
+          .environment([])
+          .portMappings(PortMapping.builder().containerPort(1337).build())
+          .build())
+      .build()
+
+    when:
+    def retrievedCluster = provider.getCluster("myapp", CREDS_NAME, FAMILY_NAME)
+
+    then:
+    cacheView.getAll(Keys.Namespace.SERVICES.ns, _) >> [serviceCacheData]
+    taskDefinitionCacheClient.get(_) >> cachedTaskDefinition
+    def serverGroup = retrievedCluster.serverGroups.iterator().next() as EcsServerGroup
+    serverGroup.taskDefinitionRevision == 42
+    serverGroup.deploymentId == 'ecs-svc/9876543210'
+    serverGroup.rolloutState == 'IN_PROGRESS'
+    serverGroup.rolloutStateReason == 'ECS deployment is in progress.'
+  }
+
   def makeEcsServerGroup(String serviceName, String region, long startTime, String taskId, Map healthStatus, String ip) {
     Names name = Names.parseName(serviceName)
     new EcsServerGroup(

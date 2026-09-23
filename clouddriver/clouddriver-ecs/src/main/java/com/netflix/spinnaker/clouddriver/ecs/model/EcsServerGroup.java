@@ -52,6 +52,19 @@ public class EcsServerGroup implements ServerGroup {
   Set<String> metricAlarms;
   Moniker moniker;
 
+  // The running task-definition revision (the trailing number of the task-definition ARN, e.g. 42
+  // for ".../my-family:42"). For the ecs-native provider this is the closest analog to the classic
+  // vNNN server-group sequence, since a native service has no sequence and rolls new task-def
+  // revisions in place. Null if the revision could not be parsed from the ARN.
+  Integer taskDefinitionRevision;
+
+  // ECS's own rollout state for the service's PRIMARY deployment (IN_PROGRESS / COMPLETED /
+  // FAILED), plumbed through from the cached Service. Lets Deck show whether ECS considers the
+  // current deployment settled. Null when unavailable.
+  String deploymentId;
+  String rolloutState;
+  String rolloutStateReason;
+
   @Override
   public Boolean isDisabled() {
     return disabled;

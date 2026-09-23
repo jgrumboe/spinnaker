@@ -12,6 +12,7 @@ import { HealthCounts } from '../healthCounts';
 import { LoadBalancersTagWrapper } from '../loadBalancer';
 import { NameUtils } from '../naming';
 import { Overridable } from '../overrideRegistry';
+import { EcsRolloutStateBadge } from './pod/EcsRolloutStateBadge';
 import { RunningTasksTag } from './pod/RunningTasksTag';
 
 export interface IServerGroupHeaderProps {
@@ -118,9 +119,23 @@ export class SequenceAndBuildAndImages extends React.Component<IServerGroupHeade
     const serverGroupSequence = NameUtils.getSequence(serverGroup.moniker.sequence);
     const ciBuild = serverGroup.buildInfo && serverGroup.buildInfo.ciBuild;
     const appArtifact = serverGroup.buildInfo && serverGroup.buildInfo.appArtifact;
+
+    // Server groups without a vNNN sequence (notably ecs-native's single durable service, which
+    // rolls task-def revisions in place) leave the sequence slot blank. Fall back to the running
+    // task-definition revision, formatted the same vNNN way for visual parity with versioned pods.
+    const taskDefinitionRevision = (serverGroup as any).taskDefinitionRevision;
+    const revisionLabel =
+      !serverGroupSequence && taskDefinitionRevision != null
+        ? `v${String(taskDefinitionRevision).padStart(3, '0')}`
+        : null;
+    const rolloutState = (serverGroup as any).rolloutState;
+    const rolloutStateReason = (serverGroup as any).rolloutStateReason;
+
     return (
       <div>
         {!!serverGroupSequence && <span className="server-group-sequence"> {serverGroupSequence}</span>}
+        {!serverGroupSequence && !!revisionLabel && <span className="server-group-sequence"> {revisionLabel}</span>}
+        {!!rolloutState && <EcsRolloutStateBadge rolloutState={rolloutState} rolloutStateReason={rolloutStateReason} />}
         {!!serverGroupSequence && (!!jenkins || !!images) && <span>: </span>}
         {!!jenkins && (
           <a className="build-link sp-margin-xs-right" href={jenkins.href} target="_blank">

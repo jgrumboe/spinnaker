@@ -176,6 +176,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
               taskDefinition,
               service.getSubnets(),
               service.getSecurityGroups(),
+              service,
               includeDetails);
 
       if (ecsServerGroup == null) {
@@ -281,6 +282,22 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
         .setEnvironmentVariables(containerDefinition.environment());
   }
 
+  /**
+   * Extracts the task-definition revision from a task-definition ARN. ECS ARNs end with {@code
+   * family:revision} (e.g. {@code arn:aws:ecs:...:task-definition/my-family:42}), so the revision
+   * is the integer after the final colon. Returns null if the ARN is null or not in that form.
+   */
+  private Integer parseTaskDefinitionRevision(String taskDefinitionArn) {
+    if (taskDefinitionArn == null) {
+      return null;
+    }
+    String revision = StringUtils.substringAfterLast(taskDefinitionArn, ":");
+    if (StringUtils.isNumeric(revision)) {
+      return Integer.valueOf(revision);
+    }
+    return null;
+  }
+
   private ServerGroup.Capacity buildServerGroupCapacity(int desiredCount, ScalableTarget target) {
     ServerGroup.Capacity capacity = new ServerGroup.Capacity();
     capacity.setDesired(desiredCount);
@@ -318,6 +335,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
       software.amazon.awssdk.services.ecs.model.TaskDefinition taskDefinition,
       List<String> eniSubnets,
       List<String> eniSecurityGroups,
+      Service service,
       boolean includeDetails) {
     ServerGroup.InstanceCounts instanceCounts = buildInstanceCount(instances);
     String scalableTargetId = "service/" + ecsClusterName + "/" + serviceName;
@@ -379,6 +397,8 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
             .stream()
             .map(EcsMetricAlarm::getAlarmName)
             .collect(Collectors.toSet());
+    Integer taskDefinitionRevision =
+        parseTaskDefinitionRevision(taskDefinition.taskDefinitionArn());
     EcsServerGroup serverGroup = new EcsServerGroup();
     if (includeDetails) {
       TaskDefinition ecsTaskDefinition = buildTaskDefinition(taskDefinition);
@@ -418,6 +438,17 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
           .setSecurityGroups(securityGroups)
           .setMetricAlarms(metricAlarmNames)
           .setMoniker(moniker);
+    }
+
+    // Task-def revision and ECS rollout state apply to both the summary (clusters listing) and the
+    // detailed view, so set them regardless of includeDetails -- the clusters-view card header
+    // reads them from the summary payload.
+    serverGroup.setTaskDefinitionRevision(taskDefinitionRevision);
+    if (service != null) {
+      serverGroup
+          .setDeploymentId(service.getDeploymentId())
+          .setRolloutState(service.getRolloutState())
+          .setRolloutStateReason(service.getRolloutStateReason());
     }
     EcsServerGroup.AutoScalingGroup asg =
         new EcsServerGroup.AutoScalingGroup()

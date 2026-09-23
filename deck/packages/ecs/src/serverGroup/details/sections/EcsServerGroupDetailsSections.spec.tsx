@@ -6,6 +6,7 @@ import { CollapsibleSection, HealthCounts } from '@spinnaker/core';
 import {
   EcsBuildInfoSection,
   EcsCapacitySection,
+  EcsDeploymentSection,
   EcsEnvironmentVariablesSection,
   EcsFirewallsSection,
   EcsHealthSection,
@@ -126,5 +127,39 @@ describe('ECS server group details sections', () => {
     const wrapper = shallow(<EcsServerGroupEventsSection {...props} />);
 
     expect(wrapper.find(EventsLink).prop('serverGroup')).toBe(serverGroup);
+  });
+
+  it('renders the ECS deployment section with revision and rollout state', () => {
+    const wrapper = shallow(
+      <EcsDeploymentSection
+        {...props}
+        serverGroup={
+          {
+            ...serverGroup,
+            taskDefinitionRevision: 42,
+            rolloutState: 'COMPLETED',
+            rolloutStateReason: 'ECS deployment completed.',
+            deploymentId: 'ecs-svc/1234567890',
+          } as any
+        }
+      />,
+    );
+    const text = sectionContent(wrapper).text();
+
+    expect(text).toContain('42');
+    expect(text).toContain('COMPLETED');
+    expect(text).toContain('ECS deployment completed.');
+    expect(text).toContain('ecs-svc/1234567890');
+  });
+
+  it('omits the ECS deployment section when there is nothing to show', () => {
+    const wrapper = shallow(
+      <EcsDeploymentSection
+        {...props}
+        serverGroup={{ ...serverGroup, taskDefinitionRevision: undefined, rolloutState: undefined } as any}
+      />,
+    );
+
+    expect(wrapper.isEmptyRender()).toBe(true);
   });
 });

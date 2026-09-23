@@ -29,6 +29,7 @@ import { ecsServerGroupDetailsGetter } from './serverGroup/details/ecsServerGrou
 import {
   EcsBuildInfoSection,
   EcsCapacitySection,
+  EcsDeploymentSection,
   EcsEnvironmentVariablesSection,
   EcsFirewallsSection,
   EcsHealthSection,
@@ -52,6 +53,7 @@ export function registerEcsProvider(): void {
       detailsGetter: ecsServerGroupDetailsGetter,
       detailsSections: [
         EcsServerGroupInformationSection,
+        EcsDeploymentSection,
         EcsTaskDefinitionSection,
         EcsEnvironmentVariablesSection,
         EcsHealthSection,
