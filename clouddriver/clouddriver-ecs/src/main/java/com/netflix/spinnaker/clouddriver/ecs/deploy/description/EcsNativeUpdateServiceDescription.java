@@ -20,6 +20,12 @@ import java.util.List;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import software.amazon.awssdk.services.ecs.model.CapacityProviderStrategyItem;
+import software.amazon.awssdk.services.ecs.model.LoadBalancer;
+import software.amazon.awssdk.services.ecs.model.NetworkConfiguration;
+import software.amazon.awssdk.services.ecs.model.PlacementConstraint;
+import software.amazon.awssdk.services.ecs.model.PlacementStrategy;
+import software.amazon.awssdk.services.ecs.model.ServiceRegistry;
 
 /**
  * Description for an in-place update of an existing ECS service under the opt-in {@code ecs-native}
@@ -27,9 +33,8 @@ import lombok.EqualsAndHashCode;
  *
  * <p>Unlike the original provider, which creates a new versioned service per deploy, this drives a
  * native ECS {@code UpdateService} against the durable service named by {@link
- * #getServerGroupName()}: optionally rolling it to a new task definition, applying the native
- * deployment configuration (rolling bounds + circuit-breaker rollback), and/or forcing a fresh
- * rolling deployment.
+ * #getServerGroupName()}. Service-shape fields are optional because rollback operations normally
+ * change only the task definition; when present, they are forwarded to {@code UpdateService}.
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -40,6 +45,36 @@ public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription 
 
   /** Task definition (ARN or {@code family:revision}) to roll the service to. Optional. */
   @Nullable String taskDefinition;
+
+  /** Desired task count. Native updates treat capacity fields as authoritative when supplied. */
+  @Nullable Integer desiredCount;
+
+  /** Full awsvpc network configuration to apply to the service. */
+  @Nullable NetworkConfiguration networkConfiguration;
+
+  /** Service discovery registrations to apply to the service. */
+  @Nullable List<ServiceRegistry> serviceRegistries;
+
+  /** ECS placement constraints to apply to the service. */
+  @Nullable List<PlacementConstraint> placementConstraints;
+
+  /** ECS placement strategy to apply to the service. */
+  @Nullable List<PlacementStrategy> placementStrategy;
+
+  /** Capacity provider strategy to apply to the service. */
+  @Nullable List<CapacityProviderStrategyItem> capacityProviderStrategy;
+
+  /** Fargate platform version to apply to the service. */
+  @Nullable String platformVersion;
+
+  /** Health-check grace period to apply to the service. */
+  @Nullable Integer healthCheckGracePeriodSeconds;
+
+  /** Whether ECS Exec is enabled for the service. */
+  @Nullable Boolean enableExecuteCommand;
+
+  /** Load balancer mappings to apply to the service. */
+  @Nullable List<LoadBalancer> loadBalancers;
 
   /** Lower bound (percent) of healthy tasks ECS keeps running during the deployment. */
   @Nullable Integer minimumHealthyPercent;
@@ -68,18 +103,9 @@ public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription 
   /** When {@code true}, a deployment that trips a named alarm is automatically rolled back. */
   boolean deploymentAlarmsRollback;
 
-  /**
-   * Native ECS deployment strategy: {@code ROLLING} (ECS's default when left unset) or {@code
-   * BLUE_GREEN}. See the equivalent field on {@code EcsNativeCreateServerGroupDescription} for the
-   * full explanation. This operation does not touch load balancer configuration, so a {@code
-   * BLUE_GREEN} update here reuses whatever target group/listener-rule swap the service was created
-   * with; changing that swap configuration requires a create-server-group deploy.
-   */
+  /** Native ECS deployment strategy: {@code ROLLING} or {@code BLUE_GREEN}. */
   @Nullable String deploymentStrategy;
 
-  /**
-   * Minutes ECS waits after a {@code BLUE_GREEN} update's new task set reaches steady state before
-   * terminating the old one. Ignored for {@code ROLLING}.
-   */
+  /** Minutes ECS waits after the new task set reaches steady state before cleanup. */
   @Nullable Integer bakeTimeInMinutes;
 }

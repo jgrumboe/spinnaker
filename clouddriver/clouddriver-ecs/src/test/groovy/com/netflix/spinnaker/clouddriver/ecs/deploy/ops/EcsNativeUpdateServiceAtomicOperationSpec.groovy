@@ -18,7 +18,13 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.ops
 
 import com.netflix.spinnaker.clouddriver.ecs.TestCredential
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeUpdateServiceDescription
+import software.amazon.awssdk.services.ecs.model.CapacityProviderStrategyItem
+import software.amazon.awssdk.services.ecs.model.LoadBalancer
+import software.amazon.awssdk.services.ecs.model.NetworkConfiguration
+import software.amazon.awssdk.services.ecs.model.PlacementConstraint
+import software.amazon.awssdk.services.ecs.model.PlacementStrategy
 import software.amazon.awssdk.services.ecs.model.Service
+import software.amazon.awssdk.services.ecs.model.ServiceRegistry
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse
 
@@ -169,3 +175,61 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .build()
   }
 }
+
+
+  void 'should apply mutable service shape fields on update'() {
+    given:
+    def serviceName = 'myapp-stack-detail'
+    def credentials = TestCredential.named('test', [:])
+    def networkConfiguration = NetworkConfiguration.builder().build()
+    def serviceRegistries = [ServiceRegistry.builder().registryArn('arn:registry').build()]
+    def placementConstraints = [PlacementConstraint.builder().type('distinctInstance').build()]
+    def placementStrategy = [PlacementStrategy.builder().type('spread').field('instanceId').build()]
+    def capacityProviderStrategy = [CapacityProviderStrategyItem.builder().capacityProvider('FARGATE').weight(1).build()]
+    def loadBalancers = [LoadBalancer.builder().targetGroupArn('arn:target-group').containerName('app').containerPort(8080).build()]
+
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: serviceName,
+      taskDefinition: 'task-def-arn',
+      desiredCount: 3,
+      networkConfiguration: networkConfiguration,
+      serviceRegistries: serviceRegistries,
+      placementConstraints: placementConstraints,
+      placementStrategy: placementStrategy,
+      capacityProviderStrategy: capacityProviderStrategy,
+      platformVersion: '1.4.0',
+      healthCheckGracePeriodSeconds: 60,
+      enableExecuteCommand: true,
+      loadBalancers: loadBalancers,
+      forceNewDeployment: true
+    ))
+
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    credentialsRepository.getOne(_) >> credentials
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest req ->
+      req.desiredCount() == 3 &&
+        req.networkConfiguration() == networkConfiguration &&
+        req.serviceRegistries() == serviceRegistries &&
+        req.placementConstraints() == placementConstraints &&
+        req.placementStrategy() == placementStrategy &&
+        req.capacityProviderStrategy() == capacityProviderStrategy &&
+        req.platformVersion() == '1.4.0' &&
+        req.healthCheckGracePeriodSeconds() == 60 &&
+        req.enableExecuteCommand() == true &&
+        req.loadBalancers() == loadBalancers
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
+  }

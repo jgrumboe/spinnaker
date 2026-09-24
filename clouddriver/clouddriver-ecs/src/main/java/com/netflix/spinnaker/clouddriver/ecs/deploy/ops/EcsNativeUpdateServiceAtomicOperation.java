@@ -30,8 +30,8 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  * In-place {@code UpdateService} for the opt-in {@code ecs-native} provider.
  *
  * <p>This is the native deployment primitive: instead of creating a new versioned service, it rolls
- * an existing, durable ECS service to a new task definition and/or deployment configuration and
- * lets ECS perform the rolling update (with its circuit breaker and optional automatic rollback).
+ * an existing, durable ECS service to a new task definition and/or service shape and lets ECS
+ * perform the rolling update with its circuit breaker and optional automatic rollback.
  */
 public class EcsNativeUpdateServiceAtomicOperation
     extends AbstractEcsAtomicOperation<EcsNativeUpdateServiceDescription, Void>
@@ -60,6 +60,36 @@ public class EcsNativeUpdateServiceAtomicOperation
 
     if (StringUtils.isNotBlank(description.getTaskDefinition())) {
       requestBuilder.taskDefinition(description.getTaskDefinition());
+    }
+    if (description.getDesiredCount() != null) {
+      requestBuilder.desiredCount(description.getDesiredCount());
+    }
+    if (description.getNetworkConfiguration() != null) {
+      requestBuilder.networkConfiguration(description.getNetworkConfiguration());
+    }
+    if (description.getServiceRegistries() != null) {
+      requestBuilder.serviceRegistries(description.getServiceRegistries());
+    }
+    if (description.getPlacementConstraints() != null) {
+      requestBuilder.placementConstraints(description.getPlacementConstraints());
+    }
+    if (description.getPlacementStrategy() != null) {
+      requestBuilder.placementStrategy(description.getPlacementStrategy());
+    }
+    if (description.getCapacityProviderStrategy() != null) {
+      requestBuilder.capacityProviderStrategy(description.getCapacityProviderStrategy());
+    }
+    if (StringUtils.isNotBlank(description.getPlatformVersion())) {
+      requestBuilder.platformVersion(description.getPlatformVersion());
+    }
+    if (description.getHealthCheckGracePeriodSeconds() != null) {
+      requestBuilder.healthCheckGracePeriodSeconds(description.getHealthCheckGracePeriodSeconds());
+    }
+    if (description.getEnableExecuteCommand() != null) {
+      requestBuilder.enableExecuteCommand(description.getEnableExecuteCommand());
+    }
+    if (description.getLoadBalancers() != null) {
+      requestBuilder.loadBalancers(description.getLoadBalancers());
     }
 
     DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();

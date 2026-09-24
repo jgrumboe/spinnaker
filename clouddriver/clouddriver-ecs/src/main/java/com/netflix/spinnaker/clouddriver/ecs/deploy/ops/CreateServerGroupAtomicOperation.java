@@ -668,7 +668,7 @@ public class CreateServerGroupAtomicOperation
     return requestBuilder.build();
   }
 
-  private boolean isTaggingEnabled(EcsClient ecs) {
+  protected boolean isTaggingEnabled(EcsClient ecs) {
     boolean isServiceLongArnFormatEnabled = false;
     boolean isTaskLongArnFormatEnabled = false;
 
@@ -697,7 +697,7 @@ public class CreateServerGroupAtomicOperation
     return isServiceLongArnFormatEnabled && isTaskLongArnFormatEnabled;
   }
 
-  private String registerAutoScalingGroup(
+  protected String registerAutoScalingGroup(
       AmazonCredentials credentials, Service service, ScalableTarget sourceTarget) {
 
     ApplicationAutoScalingClient autoScalingClient = getAmazonApplicationAutoScalingClient();

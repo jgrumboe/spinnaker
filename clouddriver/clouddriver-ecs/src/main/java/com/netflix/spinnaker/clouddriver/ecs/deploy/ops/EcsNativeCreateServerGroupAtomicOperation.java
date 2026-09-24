@@ -20,10 +20,12 @@ import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.AssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
+import com.netflix.spinnaker.clouddriver.ecs.EcsCloudProvider;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName;
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixAssumeRoleEcsCredentials;
+import com.netflix.spinnaker.clouddriver.names.NamerRegistry;
 import com.netflix.spinnaker.moniker.Moniker;
 import com.netflix.spinnaker.moniker.Namer;
 import java.util.ArrayList;
@@ -161,37 +163,84 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     EcsServerGroupName serverGroupName = new EcsServerGroupName(existingServiceName);
     TaskDefinition taskDefinition = registerTaskDefinition(ecs, taskRoleArn, serverGroupName);
 
-    UpdateServiceRequest.Builder requestBuilder =
-        UpdateServiceRequest.builder()
-            .cluster(description.getEcsClusterName())
-            .service(existingServiceName)
-            .taskDefinition(taskDefinition.taskDefinitionArn())
-            .forceNewDeployment(true);
+    UpdateServiceRequest.Builder requestBuilder;
+    if (description.getCapacity() != null) {
+      requestBuilder =
+          buildAuthoritativeUpdateRequest(ecs, taskDefinition.taskDefinitionArn(), serverGroupName);
+      // Application Auto Scaling owns min/max capacity, while this native deploy owns the desired
+      // count. Re-registering the target makes capacity edits explicit instead of silently ignored.
+    } else {
+      requestBuilder =
+          UpdateServiceRequest.builder()
+              .cluster(description.getEcsClusterName())
+              .service(existingServiceName)
+              .taskDefinition(taskDefinition.taskDefinitionArn())
+              .forceNewDeployment(true);
 
-    validateBlueGreenInPlaceConfig(nativeDescription());
+      validateBlueGreenInPlaceConfig(nativeDescription());
 
-    DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
-    if (deploymentConfiguration != null) {
-      requestBuilder.deploymentConfiguration(deploymentConfiguration);
-    }
+      DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
+      if (deploymentConfiguration != null) {
+        requestBuilder.deploymentConfiguration(deploymentConfiguration);
+      }
 
-    // For a blue/green ALB traffic shift ECS needs the advancedConfiguration on the service's load
-    // balancer, and UpdateService only carries it when we also (re)send the loadBalancers block.
-    // Scoped to exactly this case: a plain rolling in-place update leaves loadBalancers untouched
-    // so
-    // it doesn't try to mutate the service's existing load-balancer wiring.
-    AdvancedConfiguration advancedConfiguration = buildAdvancedConfiguration(nativeDescription());
-    if (advancedConfiguration != null) {
-      Collection<LoadBalancer> loadBalancers =
-          retrieveLoadBalancers(serverGroupName.getContainerName());
-      requestBuilder.loadBalancers(
-          withAdvancedConfiguration(new ArrayList<>(loadBalancers), advancedConfiguration));
+      // For a blue/green ALB traffic shift ECS needs the advancedConfiguration on the service's
+      // load balancer, and UpdateService only carries it when we also (re)send loadBalancers.
+      AdvancedConfiguration advancedConfiguration = buildAdvancedConfiguration(nativeDescription());
+      if (advancedConfiguration != null) {
+        Collection<LoadBalancer> loadBalancers =
+            retrieveLoadBalancers(serverGroupName.getContainerName());
+        requestBuilder.loadBalancers(
+            withAdvancedConfiguration(new ArrayList<>(loadBalancers), advancedConfiguration));
+      }
     }
 
     Service service = ecs.updateService(requestBuilder.build()).service();
+    if (description.getCapacity() != null) {
+      registerAutoScalingGroup(getCredentials(), service, null);
+    }
     updateTaskStatus("Done rolling ecs-native service " + existingServiceName + " in place.");
 
     return buildDeploymentResult(service);
+  }
+
+  /**
+   * Builds an authoritative UpdateService request from the same service-shape contract used by the
+   * initial CreateService request. ECS does not support launchType changes through UpdateService,
+   * so launchType remains the deliberate exception; capacity provider strategy is the mutable ECS
+   * replacement exposed here.
+   */
+  private UpdateServiceRequest.Builder buildAuthoritativeUpdateRequest(
+      EcsClient ecs, String taskDefinitionArn, EcsServerGroupName serverGroupName) {
+    Namer<EcsResource> namer =
+        NamerRegistry.lookup()
+            .withProvider(EcsCloudProvider.ID)
+            .withAccount(description.getAccount())
+            .withResource(EcsResource.class);
+    CreateServiceRequest serviceRequest =
+        makeServiceRequest(
+            taskDefinitionArn,
+            serverGroupName,
+            description.getCapacity().getDesired(),
+            namer,
+            isTaggingEnabled(ecs));
+
+    return UpdateServiceRequest.builder()
+        .cluster(serviceRequest.cluster())
+        .service(serviceRequest.serviceName())
+        .taskDefinition(taskDefinitionArn)
+        .desiredCount(serviceRequest.desiredCount())
+        .networkConfiguration(serviceRequest.networkConfiguration())
+        .serviceRegistries(serviceRequest.serviceRegistries())
+        .placementConstraints(serviceRequest.placementConstraints())
+        .placementStrategy(serviceRequest.placementStrategy())
+        .capacityProviderStrategy(serviceRequest.capacityProviderStrategy())
+        .platformVersion(serviceRequest.platformVersion())
+        .healthCheckGracePeriodSeconds(serviceRequest.healthCheckGracePeriodSeconds())
+        .enableExecuteCommand(serviceRequest.enableExecuteCommand())
+        .loadBalancers(serviceRequest.loadBalancers())
+        .deploymentConfiguration(serviceRequest.deploymentConfiguration())
+        .forceNewDeployment(true);
   }
 
   @Override
