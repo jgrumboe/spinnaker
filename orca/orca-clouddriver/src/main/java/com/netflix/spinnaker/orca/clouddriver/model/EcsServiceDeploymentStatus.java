@@ -20,22 +20,25 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Mirrors {@code com.netflix.spinnaker.clouddriver.ecs.model.EcsServiceDeploymentStatus} in
- * clouddriver; deserialized from the {@code ecs-native} deployment-status endpoint's JSON response.
+ * Mirrors clouddriver's ECS service-deployment status DTO. The target task definition and stable
+ * service-deployment ARN pin polling to the deployment requested by the stage.
  */
 @Data
 @NoArgsConstructor
 public class EcsServiceDeploymentStatus {
   String serviceName;
   String clusterArn;
+  String serviceDeploymentArn;
   String deploymentId;
+  String targetServiceRevisionArn;
+  String targetTaskDefinition;
+  String status;
+  String statusReason;
+  String lifecycleStage;
   String rolloutState;
   String rolloutStateReason;
-  String status;
-  Integer desiredCount;
-  Integer runningCount;
-  Integer pendingCount;
-  Integer failedTasks;
   Long createdAt;
+  Long startedAt;
+  Long finishedAt;
   Long updatedAt;
 }

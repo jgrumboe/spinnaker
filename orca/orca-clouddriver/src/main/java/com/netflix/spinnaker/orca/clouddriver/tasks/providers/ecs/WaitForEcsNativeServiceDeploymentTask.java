@@ -27,6 +27,7 @@ import com.netflix.spinnaker.orca.clouddriver.model.EcsServiceDeploymentStatus;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import lombok.extern.slf4j.Slf4j;
@@ -34,27 +35,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
-/**
- * Waits on ECS's own native deployment/rollout state for a service (see {@link EcsNativeService}),
- * rather than only on instance health. Meant to be added as an explicit stage after an {@code
- * ecs-native} deploy/clone stage; it doesn't hook into the shared deploy stage's task graph, so
- * providers other than {@code ecs-native} are unaffected and existing pipelines need no changes.
- *
- * <p>Reads {@code account} (or {@code credentials}), {@code region}, and {@code serverGroupName}
- * directly from the stage context; falls back to the {@code deploy.server.groups} output of the
- * preceding deploy stage for {@code serverGroupName}/{@code region} when not set explicitly,
- * following the same convention other post-deploy wait tasks use. The {@code credentials} fallback
- * lets it run in the same stage as an {@code ecs-native} rollback/update op (which carries the
- * account as {@code credentials}), not just after a separate deploy stage.
- */
 @Slf4j
 @Component
 public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeoutRetryableTask {
 
   public static final String TASK_NAME = "waitForEcsNativeServiceDeployment";
+  public static final String EXPECTED_TASK_DEFINITION = "ecsNativeExpectedTaskDefinition";
 
   private static final long BACKOFF_PERIOD = TimeUnit.SECONDS.toMillis(10);
   private static final long TIMEOUT = TimeUnit.HOURS.toMillis(1);
+  private static final Set<String> TERMINAL_FAILURE_STATUSES =
+      Set.of("ROLLBACK_SUCCESSFUL", "ROLLBACK_FAILED", "STOPPED", "FAILED");
 
   @Autowired private EcsNativeService ecsNativeService;
 
@@ -72,15 +63,13 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
   @Override
   public TaskResult execute(@Nonnull StageExecution stage) {
     Map<String, Object> context = stage.getContext();
-    // Post-deploy stages set "account"; server-group operation stages (and the ecs-native rollback
-    // stage, via AbstractServerGroupTask) carry the account as "credentials" instead. Accept
-    // either.
     String account = (String) context.get("account");
     if (account == null) {
       account = (String) context.get("credentials");
     }
     String region = resolveRegion(context);
     String serverGroupName = resolveServerGroupName(context, region);
+    String expectedTaskDefinition = resolveExpectedTaskDefinition(context);
 
     if (account == null || region == null || serverGroupName == null) {
       throw new IllegalArgumentException(
@@ -88,40 +77,70 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
               + "(either directly in the stage context, or via a preceding deploy stage's "
               + "deploy.server.groups output)");
     }
+    if (expectedTaskDefinition == null || expectedTaskDefinition.isBlank()) {
+      throw new IllegalArgumentException(
+          "waitForEcsNativeServiceDeployment requires ecsNativeExpectedTaskDefinition; "
+              + "deployment status cannot safely select an unpinned PRIMARY deployment");
+    }
 
     try {
       EcsServiceDeploymentStatus status =
           Retrofit2SyncCall.execute(
-              ecsNativeService.getServiceDeploymentStatus(account, region, serverGroupName));
+              ecsNativeService.getServiceDeploymentStatus(
+                  account, region, serverGroupName, expectedTaskDefinition));
 
+      String serviceDeploymentStatus =
+          status.getStatus() != null ? status.getStatus() : status.getRolloutState();
       log.info(
-          "ecs-native deployment status for {}: rolloutState={} reason={}",
+          "ecs-native service deployment {} for {}: status={} lifecycleStage={} reason={}",
+          status.getServiceDeploymentArn(),
           serverGroupName,
-          status.getRolloutState(),
-          status.getRolloutStateReason());
+          serviceDeploymentStatus,
+          status.getLifecycleStage(),
+          status.getStatusReason() != null
+              ? status.getStatusReason()
+              : status.getRolloutStateReason());
 
-      if ("COMPLETED".equals(status.getRolloutState())) {
-        return TaskResult.builder(ExecutionStatus.SUCCEEDED)
-            .context("ecsNativeDeploymentStatus", status)
-            .build();
-      }
-      if ("FAILED".equals(status.getRolloutState())) {
-        // Covers both a plain failure and a deployment the circuit breaker already rolled back.
+      if (status.getTargetTaskDefinition() != null
+          && !expectedTaskDefinition.equals(status.getTargetTaskDefinition())) {
+        log.warn(
+            "ecs-native service deployment {} targets {}, expected {}; treating as terminal",
+            status.getServiceDeploymentArn(),
+            status.getTargetTaskDefinition(),
+            expectedTaskDefinition);
         return TaskResult.builder(ExecutionStatus.TERMINAL)
             .context("ecsNativeDeploymentStatus", status)
             .build();
       }
-      // IN_PROGRESS, or any future state ECS adds: keep polling.
+
+      if ("SUCCESSFUL".equals(serviceDeploymentStatus)) {
+        return TaskResult.builder(ExecutionStatus.SUCCEEDED)
+            .context("ecsNativeDeploymentStatus", status)
+            .build();
+      }
+      if (TERMINAL_FAILURE_STATUSES.contains(serviceDeploymentStatus)) {
+        return TaskResult.builder(ExecutionStatus.TERMINAL)
+            .context("ecsNativeDeploymentStatus", status)
+            .build();
+      }
+      // PENDING, IN_PROGRESS, ROLLBACK_REQUESTED, ROLLBACK_IN_PROGRESS, STOP_REQUESTED,
+      // STOP_IN_PROGRESS, and unknown future states remain running. In particular, a completed
+      // rollback is terminal and can never be accepted as success for the requested deployment.
       return TaskResult.builder(ExecutionStatus.RUNNING)
           .context("ecsNativeDeploymentStatus", status)
           .build();
     } catch (SpinnakerHttpException e) {
       if (e.getResponseCode() == HttpStatus.NOT_FOUND.value()) {
-        // The service or its PRIMARY deployment may not exist yet right after create; retry.
+        // The service deployment may not be visible immediately after create/update; retry.
         return TaskResult.RUNNING;
       }
       throw e;
     }
+  }
+
+  private static String resolveExpectedTaskDefinition(Map<String, Object> context) {
+    String expected = (String) context.get(EXPECTED_TASK_DEFINITION);
+    return expected != null ? expected : (String) context.get("expectedTaskDefinition");
   }
 
   private static String resolveRegion(Map<String, Object> context) {

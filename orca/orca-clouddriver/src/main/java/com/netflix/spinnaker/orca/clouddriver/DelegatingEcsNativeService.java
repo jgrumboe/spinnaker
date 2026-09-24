@@ -29,7 +29,8 @@ public class DelegatingEcsNativeService extends DelegatingClouddriverService<Ecs
 
   @Override
   public Call<EcsServiceDeploymentStatus> getServiceDeploymentStatus(
-      String account, String region, String serverGroupName) {
-    return getService().getServiceDeploymentStatus(account, region, serverGroupName);
+      String account, String region, String serverGroupName, String expectedTaskDefinition) {
+    return getService()
+        .getServiceDeploymentStatus(account, region, serverGroupName, expectedTaskDefinition);
   }
 }

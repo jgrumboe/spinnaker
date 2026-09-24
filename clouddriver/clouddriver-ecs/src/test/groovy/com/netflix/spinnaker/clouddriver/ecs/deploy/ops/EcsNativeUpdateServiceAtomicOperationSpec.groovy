@@ -174,7 +174,6 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .service(Service.builder().serviceName(serviceName).build())
         .build()
   }
-}
 
 
   void 'should apply mutable service shape fields on update'() {
@@ -233,3 +232,4 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .service(Service.builder().serviceName(serviceName).build())
         .build()
   }
+}

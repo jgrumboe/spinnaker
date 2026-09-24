@@ -20,11 +20,11 @@ import com.netflix.spinnaker.orca.clouddriver.model.EcsServiceDeploymentStatus;
 import retrofit2.Call;
 import retrofit2.http.GET;
 import retrofit2.http.Path;
+import retrofit2.http.Query;
 
 /**
- * Client for the {@code ecs-native} deployment-status endpoint added to clouddriver (see {@code
- * EcsNativeServiceDeploymentController}). Kept as its own small retrofit interface, separate from
- * the much larger {@link OortService}, so the existing service is never touched.
+ * Client for ecs-native service-deployment status. The expected task definition pins the read to
+ * the service deployment created by the preceding write operation.
  */
 public interface EcsNativeService {
 
@@ -32,5 +32,6 @@ public interface EcsNativeService {
   Call<EcsServiceDeploymentStatus> getServiceDeploymentStatus(
       @Path("account") String account,
       @Path("region") String region,
-      @Path("serverGroupName") String serverGroupName);
+      @Path("serverGroupName") String serverGroupName,
+      @Query("expectedTaskDefinition") String expectedTaskDefinition);
 }

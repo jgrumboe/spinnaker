@@ -39,58 +39,111 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
   }
 
   @Unroll
-  def "maps ECS rolloutState '#rolloutState' to execution status '#expectedStatus'"() {
+  def "maps ECS service-deployment status '#deploymentStatus' to execution status '#expectedStatus'"() {
     given:
-    def stage = stageWithContext([account: 'test', region: 'us-west-2', serverGroupName: 'myapp-v001'])
-    def status = new EcsServiceDeploymentStatus(rolloutState: rolloutState, rolloutStateReason: 'reason')
+    def stage = stageWithContext([
+      account: 'test',
+      region: 'us-west-2',
+      serverGroupName: 'myapp',
+      ecsNativeExpectedTaskDefinition: 'task-def-arn'
+    ])
+    def status = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1',
+      status: deploymentStatus,
+      targetTaskDefinition: 'task-def-arn',
+      statusReason: 'reason'
+    )
 
     when:
     def result = task.execute(stage)
 
     then:
-    1 * ecsNativeService.getServiceDeploymentStatus('test', 'us-west-2', 'myapp-v001') >> Calls.response(status)
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'task-def-arn') >> Calls.response(status)
     result.status == expectedStatus
     result.context.ecsNativeDeploymentStatus == status
 
     where:
-    rolloutState  | expectedStatus
-    'IN_PROGRESS' | ExecutionStatus.RUNNING
-    'COMPLETED'   | ExecutionStatus.SUCCEEDED
-    'FAILED'      | ExecutionStatus.TERMINAL
+    deploymentStatus       | expectedStatus
+    'PENDING'              | ExecutionStatus.RUNNING
+    'IN_PROGRESS'          | ExecutionStatus.RUNNING
+    'ROLLBACK_IN_PROGRESS' | ExecutionStatus.RUNNING
+    'SUCCESSFUL'           | ExecutionStatus.SUCCEEDED
+    'ROLLBACK_SUCCESSFUL'  | ExecutionStatus.TERMINAL
+    'ROLLBACK_FAILED'      | ExecutionStatus.TERMINAL
+    'STOPPED'              | ExecutionStatus.TERMINAL
+  }
+
+  def 'completed different deployment identity is terminal, never success'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test',
+      region: 'us-west-2',
+      serverGroupName: 'myapp',
+      ecsNativeExpectedTaskDefinition: 'task-def-1'
+    ])
+    def inProgress = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'deployment-1',
+      status: 'IN_PROGRESS',
+      targetTaskDefinition: 'task-def-1'
+    )
+    def rollbackDeployment = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'deployment-2',
+      status: 'SUCCESSFUL',
+      targetTaskDefinition: 'task-def-previous'
+    )
+
+    when:
+    def first = task.execute(stage)
+    def second = task.execute(stage)
+
+    then:
+    2 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'task-def-1') >>> [Calls.response(inProgress), Calls.response(rollbackDeployment)]
+    first.status == ExecutionStatus.RUNNING
+    second.status == ExecutionStatus.TERMINAL
   }
 
   def "resolves region and serverGroupName from a preceding deploy stage's output when not set directly"() {
     given:
     def stage = stageWithContext([
-      account                  : 'test',
-      'deploy.server.groups'   : ['us-west-2': ['myapp-v002']]
+      account: 'test',
+      ecsNativeExpectedTaskDefinition: 'task-def-arn',
+      'deploy.server.groups': ['us-west-2': ['myapp']]
     ])
-    def status = new EcsServiceDeploymentStatus(rolloutState: 'IN_PROGRESS')
+    def status = new EcsServiceDeploymentStatus(status: 'IN_PROGRESS')
 
     when:
     def result = task.execute(stage)
 
     then:
-    1 * ecsNativeService.getServiceDeploymentStatus('test', 'us-west-2', 'myapp-v002') >> Calls.response(status)
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'task-def-arn') >> Calls.response(status)
     result.status == ExecutionStatus.RUNNING
   }
 
-  def "falls back to 'credentials' for the account (the ecs-native rollback/op stage sets that, not 'account')"() {
+  def "falls back to 'credentials' for the account"() {
     given:
-    def stage = stageWithContext([credentials: 'test', region: 'eu-central-1', serverGroupName: 'myapp'])
-    def status = new EcsServiceDeploymentStatus(rolloutState: 'COMPLETED')
+    def stage = stageWithContext([
+      credentials: 'test',
+      region: 'eu-central-1',
+      serverGroupName: 'myapp',
+      ecsNativeExpectedTaskDefinition: 'task-def-arn'
+    ])
+    def status = new EcsServiceDeploymentStatus(status: 'SUCCESSFUL')
 
     when:
     def result = task.execute(stage)
 
     then:
-    1 * ecsNativeService.getServiceDeploymentStatus('test', 'eu-central-1', 'myapp') >> Calls.response(status)
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'eu-central-1', 'myapp', 'task-def-arn') >> Calls.response(status)
     result.status == ExecutionStatus.SUCCEEDED
   }
 
-  def "throws when account, region, or serverGroupName cannot be resolved"() {
+  def 'throws when deployment identity cannot be resolved'() {
     given:
-    def stage = stageWithContext([account: 'test'])
+    def stage = stageWithContext([account: 'test', region: 'us-west-2', serverGroupName: 'myapp'])
 
     when:
     task.execute(stage)

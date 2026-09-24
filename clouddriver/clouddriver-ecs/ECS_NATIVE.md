@@ -175,12 +175,16 @@ createServerGroup -> monitorDeploy -> [forceCacheRefresh] -> [tagServerGroup]
 - `waitForUpInstances` (`WaitForUpInstancesTask`) completes on `healthyCount >= targetDesiredSize`,
   where `targetDesiredSize` = ECS service `desiredCount` and health is the instance health above.
 - `waitForEcsNativeServiceDeployment` (`WaitForEcsNativeServiceDeploymentTask`,
-  `.../tasks/providers/ecs/`) polls a clouddriver endpoint that runs ECS `DescribeServices` and reads
-  the PRIMARY deployment's `rolloutState`: `COMPLETED` → success, `FAILED` → terminal (covers
-  circuit-breaker rollback), `IN_PROGRESS`/404 → keep polling. It resolves account/region/
-  serverGroupName from the stage context or the deploy stage's `deploy.server.groups` output.
+  `.../tasks/providers/ecs/`) polls a clouddriver endpoint backed by ECS
+  `ListServiceDeployments` / `DescribeServiceDeployments`. The preceding native operation publishes
+  the expected task-definition ARN in `ecsNativeExpectedTaskDefinition`; the endpoint selects the
+  matching stable `serviceDeploymentArn`, so a rollback deployment cannot satisfy the wait for the
+  failed target. `SUCCESSFUL` → success; `ROLLBACK_SUCCESSFUL`, `ROLLBACK_FAILED`, `STOPPED`, and
+  ordinary failure → terminal; in-progress and unknown future states keep polling. It resolves
+  account/region/serverGroupName from stage context or the deploy stage's `deploy.server.groups`
+  output.
   - Endpoint: `EcsNativeServiceDeploymentController`
-    (`GET /ecs-native/serverGroups/{account}/{region}/{serverGroupName}/deploymentStatus`),
+    (`GET /ecs-native/serverGroups/{account}/{region}/{serverGroupName}/deploymentStatus?expectedTaskDefinition=...`),
     returns `EcsServiceDeploymentStatus`.
 
 The orca server-group creator is `EcsNativeServerGroupCreator extends EcsServerGroupCreator`

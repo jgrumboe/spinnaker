@@ -32,20 +32,18 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import software.amazon.awssdk.services.ecs.EcsClient;
-import software.amazon.awssdk.services.ecs.model.Deployment;
-import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
-import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse;
+import software.amazon.awssdk.services.ecs.model.DescribeServiceDeploymentsRequest;
+import software.amazon.awssdk.services.ecs.model.DescribeServiceDeploymentsResponse;
+import software.amazon.awssdk.services.ecs.model.DescribeServiceRevisionsRequest;
+import software.amazon.awssdk.services.ecs.model.DescribeServiceRevisionsResponse;
+import software.amazon.awssdk.services.ecs.model.ListServiceDeploymentsRequest;
+import software.amazon.awssdk.services.ecs.model.ListServiceDeploymentsResponse;
+import software.amazon.awssdk.services.ecs.model.ServiceDeployment;
+import software.amazon.awssdk.services.ecs.model.ServiceRevision;
 
-/**
- * Exposes ECS's own native deployment/rollout state for a service, live from {@code
- * DescribeServices} (not the cache, since a polling wait task needs current state). Standalone
- * addition for {@code ecs-native}; the existing {@link
- * com.netflix.spinnaker.clouddriver.ecs.controllers.servergroup.EcsServerGroupController} and its
- * cache-backed views are untouched. Modeled on that controller's existing live-AWS-call pattern for
- * {@code /events}.
- */
 @RestController
 @RequestMapping("/ecs-native/serverGroups/{account}/{region}/{serverGroupName}")
 public class EcsNativeServiceDeploymentController {
@@ -66,11 +64,7 @@ public class EcsNativeServiceDeploymentController {
 
   /**
    * Resolves an ECS account by name, tolerating case differences. Deck may send the account in a
-   * different case than the credential is registered under (e.g. the pipeline/moniker-derived
-   * account id is upper-cased while the credential name is lower-case), and {@code
-   * CredentialsRepository.getOne} is case-sensitive. Falls back to a case-insensitive scan so the
-   * ecs-native read endpoints resolve the same account the rest of the UI shows. Returns null if no
-   * ECS account matches.
+   * different case than the credential is registered under.
    */
   private NetflixECSCredentials resolveCredentials(String account) {
     NetflixECSCredentials exact = credentialsRepository.getOne(account);
@@ -87,18 +81,30 @@ public class EcsNativeServiceDeploymentController {
     return all.stream().filter(c -> account.equalsIgnoreCase(c.getName())).findFirst().orElse(null);
   }
 
+  /**
+   * Returns the ECS service deployment matching the task definition produced by the write
+   * operation. The expected identity is mandatory: selecting the current PRIMARY deployment would
+   * allow an ECS rollback deployment to appear successful for the failed deployment that preceded
+   * it.
+   */
   @RequestMapping(value = "/deploymentStatus", method = RequestMethod.GET)
   ResponseEntity<?> getDeploymentStatus(
       @PathVariable String account,
       @PathVariable String region,
-      @PathVariable String serverGroupName) {
+      @PathVariable String serverGroupName,
+      @RequestParam(name = "expectedTaskDefinition", required = false)
+          String expectedTaskDefinition) {
+    if (expectedTaskDefinition == null || expectedTaskDefinition.isBlank()) {
+      return new ResponseEntity<>(
+          "expectedTaskDefinition is required to identify the ecs-native deployment",
+          HttpStatus.BAD_REQUEST);
+    }
+
     NetflixECSCredentials credentials = resolveCredentials(account);
     if (credentials == null) {
       return new ResponseEntity<>(
           String.format("Account %s is not an ECS account", account), HttpStatus.BAD_REQUEST);
     }
-    // Cache keys are written with the credential's actual-case name, so look up by the resolved
-    // name rather than the (possibly differently-cased) path value.
     String resolvedAccount = credentials.getName();
 
     Optional<Service> cachedService =
@@ -114,49 +120,109 @@ public class EcsNativeServiceDeploymentController {
     }
 
     EcsClient ecs = amazonClientProvider.getAmazonEcsV2(credentials, region);
-    DescribeServicesResponse result =
-        ecs.describeServices(
-            DescribeServicesRequest.builder()
-                .services(serverGroupName)
+    ListServiceDeploymentsResponse listed =
+        ecs.listServiceDeployments(
+            ListServiceDeploymentsRequest.builder()
                 .cluster(cachedService.get().getClusterArn())
+                .service(serverGroupName)
+                .maxResults(100)
                 .build());
-
-    if (result.services().isEmpty()) {
-      return new ResponseEntity<>(
-          String.format(
-              "Server group %s was not found in ECS for account %s / region %s",
-              serverGroupName, account, region),
-          HttpStatus.NOT_FOUND);
+    if (listed.serviceDeployments().isEmpty()) {
+      return notFound(serverGroupName, "No ECS service deployments found");
     }
 
-    List<Deployment> deployments = result.services().get(0).deployments();
-    Optional<Deployment> primaryDeployment =
-        deployments.stream().filter(d -> "PRIMARY".equals(d.status())).findFirst();
-    if (primaryDeployment.isEmpty()) {
-      return new ResponseEntity<>(
-          String.format("No PRIMARY deployment found for server group %s", serverGroupName),
-          HttpStatus.NOT_FOUND);
+    List<String> deploymentArns =
+        listed.serviceDeployments().stream()
+            .map(deployment -> deployment.serviceDeploymentArn())
+            .toList();
+    DescribeServiceDeploymentsResponse described =
+        ecs.describeServiceDeployments(
+            DescribeServiceDeploymentsRequest.builder()
+                .serviceDeploymentArns(deploymentArns)
+                .build());
+    List<String> serviceRevisionArns =
+        listed.serviceDeployments().stream()
+            .map(deployment -> deployment.targetServiceRevisionArn())
+            .filter(arn -> arn != null && !arn.isBlank())
+            .toList();
+    DescribeServiceRevisionsResponse revisions =
+        ecs.describeServiceRevisions(
+            DescribeServiceRevisionsRequest.builder()
+                .serviceRevisionArns(serviceRevisionArns)
+                .build());
+    Optional<ServiceDeployment> deployment =
+        described.serviceDeployments().stream()
+            .filter(
+                candidate -> {
+                  if (candidate.targetServiceRevision() == null) {
+                    return false;
+                  }
+                  Optional<ServiceRevision> targetRevision =
+                      revisions.serviceRevisions().stream()
+                          .filter(
+                              revision ->
+                                  candidate
+                                      .targetServiceRevision()
+                                      .arn()
+                                      .equals(revision.serviceRevisionArn()))
+                          .findFirst();
+                  return targetRevision.isPresent()
+                      && expectedTaskDefinition.equals(targetRevision.get().taskDefinition());
+                })
+            .findFirst();
+    if (deployment.isEmpty()) {
+      return notFound(
+          serverGroupName,
+          "ECS has not exposed a service deployment for task definition " + expectedTaskDefinition);
     }
 
+    ServiceDeployment selectedDeployment = deployment.get();
+    ServiceRevision selectedRevision =
+        revisions.serviceRevisions().stream()
+            .filter(
+                revision ->
+                    selectedDeployment
+                        .targetServiceRevision()
+                        .arn()
+                        .equals(revision.serviceRevisionArn()))
+            .findFirst()
+            .orElse(null);
     return new ResponseEntity<>(
-        toStatus(serverGroupName, cachedService.get().getClusterArn(), primaryDeployment.get()),
+        toStatus(
+            serverGroupName,
+            cachedService.get().getClusterArn(),
+            selectedDeployment,
+            selectedRevision),
         HttpStatus.OK);
   }
 
+  private static ResponseEntity<String> notFound(String serverGroupName, String reason) {
+    return new ResponseEntity<>(
+        String.format("Server group %s: %s", serverGroupName, reason), HttpStatus.NOT_FOUND);
+  }
+
   private static EcsServiceDeploymentStatus toStatus(
-      String serviceName, String clusterArn, Deployment deployment) {
+      String serviceName,
+      String clusterArn,
+      ServiceDeployment deployment,
+      ServiceRevision targetRevision) {
     EcsServiceDeploymentStatus status = new EcsServiceDeploymentStatus();
     status.setServiceName(serviceName);
     status.setClusterArn(clusterArn);
-    status.setDeploymentId(deployment.id());
-    status.setStatus(deployment.status());
-    status.setRolloutState(deployment.rolloutStateAsString());
-    status.setRolloutStateReason(deployment.rolloutStateReason());
-    status.setDesiredCount(deployment.desiredCount());
-    status.setRunningCount(deployment.runningCount());
-    status.setPendingCount(deployment.pendingCount());
-    status.setFailedTasks(deployment.failedTasks());
+    status.setServiceDeploymentArn(deployment.serviceDeploymentArn());
+    status.setDeploymentId(deployment.serviceDeploymentArn());
+    status.setStatus(deployment.statusAsString());
+    status.setStatusReason(deployment.statusReason());
+    status.setRolloutState(deployment.statusAsString());
+    status.setRolloutStateReason(deployment.statusReason());
+    status.setLifecycleStage(deployment.lifecycleStageAsString());
+    if (targetRevision != null) {
+      status.setTargetServiceRevisionArn(targetRevision.serviceRevisionArn());
+      status.setTargetTaskDefinition(targetRevision.taskDefinition());
+    }
     status.setCreatedAt(toEpochMillis(deployment.createdAt()));
+    status.setStartedAt(toEpochMillis(deployment.startedAt()));
+    status.setFinishedAt(toEpochMillis(deployment.finishedAt()));
     status.setUpdatedAt(toEpochMillis(deployment.updatedAt()));
     return status;
   }

@@ -20,6 +20,7 @@ import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.AssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
+import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult.Deployment;
 import com.netflix.spinnaker.clouddriver.ecs.EcsCloudProvider;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
@@ -535,6 +536,11 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     return super.getRegion();
   }
 
+  @Override
+  protected DeploymentResult makeDeploymentResult(Service service) {
+    return buildDeploymentResult(service);
+  }
+
   private DeploymentResult buildDeploymentResult(Service service) {
     Map<String, String> namesByRegion = new HashMap<>();
     namesByRegion.put(getRegion(), service.serviceName());
@@ -543,6 +549,16 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     result.setServerGroupNames(
         Collections.singletonList(getRegion() + ":" + service.serviceName()));
     result.setServerGroupNameByRegion(namesByRegion);
+
+    if (StringUtils.isNotBlank(service.taskDefinition())) {
+      Deployment deployment = new Deployment();
+      deployment.setCloudProvider("ecs-native");
+      deployment.setAccount(description.getAccount());
+      deployment.setLocation(getRegion());
+      deployment.setServerGroupName(service.serviceName());
+      deployment.getMetadata().put("ecsNativeExpectedTaskDefinition", service.taskDefinition());
+      result.setDeployments(Collections.singleton(deployment));
+    }
     return result;
   }
 

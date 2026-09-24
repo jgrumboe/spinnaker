@@ -855,7 +855,7 @@ public class CreateServerGroupAtomicOperation
     return subnetTypes;
   }
 
-  private DeploymentResult makeDeploymentResult(Service service) {
+  protected DeploymentResult makeDeploymentResult(Service service) {
     Map<String, String> namesByRegion = new HashMap<>();
     namesByRegion.put(getRegion(), service.serviceName());
 

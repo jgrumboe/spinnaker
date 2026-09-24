@@ -20,29 +20,29 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * A snapshot of ECS's own native deployment/rollout state for one service, as reported by {@code
- * DescribeServices} (the {@code deployments} list on the service, specifically the {@code PRIMARY}
- * entry). This is the same rollout tracking ECS performs for every service regardless of which
- * Spinnaker provider created it; {@code ecs-native} is the first provider in this codebase to
- * surface it to Orca so a stage can wait on it instead of only on instance health.
- *
- * <p>{@code rolloutState} is one of ECS's own values: {@code IN_PROGRESS}, {@code COMPLETED}, or
- * {@code FAILED} (the last of which includes deployments that were automatically rolled back by the
- * deployment circuit breaker).
+ * Snapshot of one ECS service deployment from {@code DescribeServiceDeployments}. The deployment
+ * ARN and target task definition identify the deployment requested by Spinnaker; status is ECS's
+ * service-deployment lifecycle status, not the legacy PRIMARY deployment rollout state.
  */
 @Data
 @NoArgsConstructor
 public class EcsServiceDeploymentStatus {
   String serviceName;
   String clusterArn;
+  String serviceDeploymentArn;
   String deploymentId;
+  String targetServiceRevisionArn;
+  String targetTaskDefinition;
+  String status;
+  String statusReason;
+  String lifecycleStage;
+
+  // Kept for compatibility with existing Deck/status consumers. These mirror status fields.
   String rolloutState;
   String rolloutStateReason;
-  String status;
-  Integer desiredCount;
-  Integer runningCount;
-  Integer pendingCount;
-  Integer failedTasks;
+
   Long createdAt;
+  Long startedAt;
+  Long finishedAt;
   Long updatedAt;
 }

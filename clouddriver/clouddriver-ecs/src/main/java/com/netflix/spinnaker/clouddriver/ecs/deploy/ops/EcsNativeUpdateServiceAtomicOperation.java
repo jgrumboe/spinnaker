@@ -16,14 +16,20 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
+import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
+import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult.Deployment;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeUpdateServiceDescription;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.services.ecs.EcsClient;
 import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
 import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
+import software.amazon.awssdk.services.ecs.model.Service;
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 
 /**
@@ -34,15 +40,15 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  * perform the rolling update with its circuit breaker and optional automatic rollback.
  */
 public class EcsNativeUpdateServiceAtomicOperation
-    extends AbstractEcsAtomicOperation<EcsNativeUpdateServiceDescription, Void>
-    implements AtomicOperation<Void> {
+    extends AbstractEcsAtomicOperation<EcsNativeUpdateServiceDescription, DeploymentResult>
+    implements AtomicOperation<DeploymentResult> {
 
   public EcsNativeUpdateServiceAtomicOperation(EcsNativeUpdateServiceDescription description) {
     super(description, "UPDATE_ECS_SERVER_GROUP");
   }
 
   @Override
-  public Void operate(List priorOutputs) {
+  public DeploymentResult operate(List priorOutputs) {
     updateTaskStatus("Initializing Update ECS Server Group (native) Operation...");
 
     EcsClient ecs = getAmazonEcsClient();
@@ -100,10 +106,33 @@ public class EcsNativeUpdateServiceAtomicOperation
     requestBuilder.forceNewDeployment(description.isForceNewDeployment());
 
     updateTaskStatus(String.format("Updating ECS service %s in cluster %s.", serviceName, cluster));
-    ecs.updateService(requestBuilder.build());
+    Service service = ecs.updateService(requestBuilder.build()).service();
     updateTaskStatus(String.format("Done updating ECS service %s.", serviceName));
 
-    return null;
+    return buildDeploymentResult(service);
+  }
+
+  private DeploymentResult buildDeploymentResult(Service service) {
+    String resolvedServiceName =
+        StringUtils.defaultIfBlank(service.serviceName(), description.getServerGroupName());
+    Map<String, String> namesByRegion = new HashMap<>();
+    namesByRegion.put(description.getRegion(), resolvedServiceName);
+
+    DeploymentResult result = new DeploymentResult();
+    result.setServerGroupNames(
+        Collections.singletonList(description.getRegion() + ":" + resolvedServiceName));
+    result.setServerGroupNameByRegion(namesByRegion);
+
+    if (StringUtils.isNotBlank(service.taskDefinition())) {
+      Deployment deployment = new Deployment();
+      deployment.setCloudProvider("ecs-native");
+      deployment.setAccount(description.getAccount());
+      deployment.setLocation(description.getRegion());
+      deployment.setServerGroupName(resolvedServiceName);
+      deployment.getMetadata().put("ecsNativeExpectedTaskDefinition", service.taskDefinition());
+      result.setDeployments(Collections.singleton(deployment));
+    }
+    return result;
   }
 
   /**
