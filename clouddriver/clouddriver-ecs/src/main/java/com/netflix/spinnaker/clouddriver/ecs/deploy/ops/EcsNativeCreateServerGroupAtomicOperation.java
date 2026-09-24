@@ -22,6 +22,7 @@ import com.netflix.spinnaker.clouddriver.aws.security.NetflixAssumeRoleAmazonCre
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult.Deployment;
 import com.netflix.spinnaker.clouddriver.ecs.EcsCloudProvider;
+import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName;
@@ -46,6 +47,7 @@ import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse;
 import software.amazon.awssdk.services.ecs.model.LoadBalancer;
 import software.amazon.awssdk.services.ecs.model.Service;
+import software.amazon.awssdk.services.ecs.model.Tag;
 import software.amazon.awssdk.services.ecs.model.TaskDefinition;
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 
@@ -142,13 +144,21 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
         DescribeServicesRequest.builder()
             .cluster(description.getEcsClusterName())
             .services(fixedServiceName)
+            .includeWithStrings("TAGS")
             .build();
     DescribeServicesResponse result = ecs.describeServices(request);
 
     // A service that has been deleted lingers as INACTIVE; treat only ACTIVE/DRAINING as existing.
-    boolean exists =
-        !result.services().isEmpty() && !"INACTIVE".equals(result.services().get(0).status());
-    return exists ? fixedServiceName : null;
+    if (result.services().isEmpty() || "INACTIVE".equals(result.services().get(0).status())) {
+      return null;
+    }
+    if (!EcsNativeServiceTag.isNative(result.services().get(0).tags())) {
+      throw new IllegalStateException(
+          "ECS service "
+              + fixedServiceName
+              + " already exists but is not marked as owned by ecs-native; refusing to update an external service.");
+    }
+    return fixedServiceName;
   }
 
   private DeploymentResult updateExistingServiceInPlace(String existingServiceName) {
@@ -224,7 +234,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
             serverGroupName,
             description.getCapacity().getDesired(),
             namer,
-            isTaggingEnabled(ecs));
+            true);
 
     return UpdateServiceRequest.builder()
         .cluster(serviceRequest.cluster())
@@ -297,7 +307,19 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
           withAdvancedConfiguration(request.loadBalancers(), advancedConfiguration));
     }
 
-    return requestBuilder.build();
+    if (!taggingEnabled) {
+      throw new IllegalArgumentException(
+          "ecs-native requires ECS service tagging, but serviceLongArnFormat and taskLongArnFormat "
+              + "are not both enabled for account "
+              + description.getAccount()
+              + ". Enable both account settings before creating an ecs-native service.");
+    }
+
+    CreateServiceRequest serviceRequest = requestBuilder.build();
+    List<Tag> serviceTags = new ArrayList<>(serviceRequest.tags());
+    serviceTags.removeIf(tag -> EcsNativeServiceTag.KEY.equals(tag.key()));
+    serviceTags.add(EcsNativeServiceTag.tag());
+    return serviceRequest.toBuilder().tags(serviceTags).build();
   }
 
   /**

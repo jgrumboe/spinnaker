@@ -57,9 +57,10 @@ is no `inPlaceUpdate` flag; the operation decides create vs. update purely from 
 service already exists:
 
 1. It computes the **fixed** service name (`buildEcsServerGroupName(...).getServiceName()` →
-   `app-stack-detail`, no `-vNNN`) and asks ECS via `DescribeServices` whether such a service is
-   currently present in the cluster (`resolveExistingServiceName()` — treats only non-`INACTIVE`
-   status as existing; a deleted service lingers as `INACTIVE`).
+   `app-stack-detail`, no `-vNNN`) and asks ECS via `DescribeServices` for that service, including
+   `TAGS`. Only an ACTIVE/DRAINING service carrying `spinnaker:provider=ecs-native` is adopted for
+   in-place update; an untagged fixed-name service is treated as external and causes the native
+   write to fail rather than being overwritten.
 2. If it exists, it calls `updateExistingServiceInPlace(...)`: registers a new task-def revision under
    the existing service's family and calls ECS **`UpdateService`** with `forceNewDeployment(true)` +
    the native `DeploymentConfiguration`. A validated native redeploy reapplies desired count,
@@ -140,13 +141,12 @@ caching agents. Consequences:
 - `Names.parseName("app-stack-detail")` → app=`app`, stack=`stack`, detail=`detail`,
   cluster=`app-stack-detail`, **sequence=null**.
 - `Names.parseName("app-stack-detail-v000")` → same, but sequence=`0`.
-- So the fixed name lands in the **same Spinnaker cluster** as the versioned one would; the only
-  moniker difference is `sequence` is null. Cluster grouping (`EcsServerClusterProvider` groups by
-  `moniker.getCluster()`) still works.
-- On our staging service the ECS service had **no moniker tags** — tagging depends on the ECS account
-  having long-ARN formats enabled. When tags are absent, the moniker is derived purely by
-  Frigga-parsing the service **name** (`EcsTagNamer.getMoniker`). Keep this in mind: naming behavior
-  is name-derived unless tags are present.
+- Name parsing still groups fixed and versioned services into the same Spinnaker cluster, but it is
+  **not ownership evidence**. `EcsServerClusterProvider` sets `isNative` only when the cached ECS
+  service carries `spinnaker:provider=ecs-native`; missing marker means classic/external.
+- Native creation requires ECS service tagging, which depends on both account settings
+  `serviceLongArnFormat` and `taskLongArnFormat`. If either is disabled, first native creation
+  fails clearly rather than creating an unowned service that later redeploys could mistake for ours.
 
 **Instance health** (`EcsTask.calculateHealthState`, `ContainerInformationService.toPlatformHealthState`):
 

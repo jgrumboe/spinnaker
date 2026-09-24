@@ -17,6 +17,7 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops
 
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials
+import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsDefaultNamer
@@ -51,13 +52,14 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     request.deploymentConfiguration().minimumHealthyPercent() == 50
     request.deploymentConfiguration().maximumPercent() == 150
     request.deploymentConfiguration().deploymentCircuitBreaker().enable() == true
     request.deploymentConfiguration().deploymentCircuitBreaker().rollback() == true
+    request.tags().any { it.key() == EcsNativeServiceTag.KEY && it.value() == EcsNativeServiceTag.VALUE }
   }
 
   def 'should preserve the original ecs defaults when native fields are unset'() {
@@ -77,7 +79,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     request.deploymentConfiguration().minimumHealthyPercent() == 100
@@ -101,7 +103,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     request.deploymentConfiguration().alarms().alarmNames() == ['myapp-high-error-rate']
@@ -122,7 +124,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     request.deploymentConfiguration().alarms() == null
@@ -143,7 +145,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
@@ -176,7 +178,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     request.loadBalancers().size() == 1
@@ -201,7 +203,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     thrown(IllegalArgumentException)
@@ -224,7 +226,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     thrown(IllegalArgumentException)
@@ -256,7 +258,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     def e = thrown(IllegalArgumentException)
@@ -279,7 +281,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     when:
     CreateServiceRequest request = operation.makeServiceRequest('task-def-arn',
         new EcsServerGroupName('mygreatapp-stack1-details2-v011'),
-        1, new EcsDefaultNamer(), false)
+        1, new EcsDefaultNamer(), true)
 
     then:
     request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
@@ -305,7 +307,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
     operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
     ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
-        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag()).build())
         .build()
 
     when:
@@ -349,7 +351,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
     amazonClientProvider.getElasticLoadBalancingV2Client(_, _) >> loadBalancingV2
     ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
-        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag()).build())
         .build()
 
     when:
@@ -388,7 +390,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
     operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
     ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
-        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag()).build())
         .build()
 
     when:
@@ -419,7 +421,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     1 * ecs.describeServices({ DescribeServicesRequest req ->
       req.cluster() == 'my-cluster' && req.services() == ['myapp-stack-web']
     } as DescribeServicesRequest) >> DescribeServicesResponse.builder()
-        .services(Service.builder().serviceName('myapp-stack-web').status('ACTIVE').build())
+        .services(Service.builder().serviceName('myapp-stack-web').status('ACTIVE').tags(EcsNativeServiceTag.tag()).build())
         .build()
     resolved == 'myapp-stack-web'
   }
@@ -444,7 +446,25 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     services                                                                              || expected
     []                                                                                    || null
     [Service.builder().serviceName('myapp-stack-web').status('INACTIVE').build()]         || null
-    [Service.builder().serviceName('myapp-stack-web').status('ACTIVE').build()]           || 'myapp-stack-web'
+    [Service.builder().serviceName('myapp-stack-web').status('ACTIVE').tags(EcsNativeServiceTag.tag()).build()]           || 'myapp-stack-web'
+  }
+
+  def 'refuses to adopt an untagged fixed-name service'() {
+    given:
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'myapp', stack: 'stack', freeFormDetails: 'web', ecsClusterName: 'my-cluster')
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName('myapp-stack-web').status('ACTIVE').build())
+        .build()
+
+    when:
+    operation.resolveExistingServiceName()
+
+    then:
+    def exception = thrown(IllegalStateException)
+    exception.message.contains('not marked as owned by ecs-native')
   }
 
   def 'operate always rolls the existing durable service in place via UpdateService (no CreateService)'() {
@@ -466,7 +486,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
     // The fixed-name service already exists -> in-place update.
     ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
-        .services(Service.builder().serviceName(serviceName).status('ACTIVE').build())
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag()).build())
         .build()
 
     when:

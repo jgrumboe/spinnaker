@@ -30,6 +30,7 @@ import com.netflix.spinnaker.cats.provider.ProviderCache;
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider;
 import com.netflix.spinnaker.clouddriver.aws.security.NetflixAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.ecs.EcsCloudProvider;
+import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag;
 import com.netflix.spinnaker.clouddriver.ecs.cache.Keys;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResourceService;
@@ -123,6 +124,7 @@ public class ServiceCachingAgent extends AbstractEcsOnDemandAgent<Service> {
 
     attributes.put("createdAt", service.createdAt().toEpochMilli());
     attributes.put("moniker", moniker);
+    attributes.put("ecsNative", EcsNativeServiceTag.isNative(service.tags()));
 
     // Capture ECS's own rollout state for the PRIMARY deployment. This comes from the same
     // DescribeServices response already fetched above (no extra AWS call), and lets Deck show

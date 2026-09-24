@@ -19,12 +19,14 @@ package com.netflix.spinnaker.clouddriver.ecs.provider.agent;
 import static com.netflix.spinnaker.clouddriver.ecs.cache.Keys.Namespace.ECS_CLUSTERS;
 import static com.netflix.spinnaker.clouddriver.ecs.cache.Keys.Namespace.SERVICES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import com.netflix.spinnaker.cats.cache.CacheData;
+import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag;
 import com.netflix.spinnaker.clouddriver.ecs.cache.Keys;
 import java.time.Instant;
 import java.util.Collection;
@@ -197,6 +199,7 @@ public class ServiceCachingAgentTest extends CommonCachingAgent {
                     .rolloutState("IN_PROGRESS")
                     .rolloutStateReason("ECS deployment is in progress.")
                     .build())
+            .tags(EcsNativeServiceTag.tag())
             .build();
 
     // When
@@ -206,10 +209,11 @@ public class ServiceCachingAgentTest extends CommonCachingAgent {
     assertEquals("ecs-svc/1234567890", attributes.get("deploymentId"));
     assertEquals("IN_PROGRESS", attributes.get("rolloutState"));
     assertEquals("ECS deployment is in progress.", attributes.get("rolloutStateReason"));
+    assertEquals(true, attributes.get("ecsNative"));
   }
 
   @Test
-  public void shouldOmitRolloutStateWhenNoPrimaryDeployment() {
+  public void shouldTreatUnmarkedServiceAsClassic() {
     // Given a service with no deployments (e.g. EXTERNAL deployment controller)
     Service service =
         Service.builder()
@@ -235,5 +239,6 @@ public class ServiceCachingAgentTest extends CommonCachingAgent {
     assertNull(attributes.get("deploymentId"));
     assertNull(attributes.get("rolloutState"));
     assertNull(attributes.get("rolloutStateReason"));
+    assertFalse(Boolean.TRUE.equals(attributes.get("ecsNative")));
   }
 }

@@ -49,4 +49,7 @@ public class Service {
   String deploymentId;
   String rolloutState;
   String rolloutStateReason;
+
+  // True only when ECS service tags contain the durable ecs-native ownership marker.
+  boolean ecsNative;
 }

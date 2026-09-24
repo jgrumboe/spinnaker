@@ -442,8 +442,8 @@ class EcsServerClusterProviderSpec extends Specification {
     serverGroup.deploymentId == 'ecs-svc/9876543210'
     serverGroup.rolloutState == 'IN_PROGRESS'
     serverGroup.rolloutStateReason == 'ECS deployment is in progress.'
-    // The fixture service is versioned (${FAMILY_NAME}-v007), so its moniker has a sequence and it
-    // is NOT flagged native. (A fixed-name, sequence-less service would set isNative = true.)
+    // The fixture service has no ecs-native ownership tag, so it is treated as external/classic
+    // regardless of its versioned name.
     serverGroup.getIsNative() == null
   }
 

@@ -449,12 +449,9 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
     // detailed view, so set them regardless of includeDetails -- the clusters-view card header
     // reads them from the summary payload.
     serverGroup.setTaskDefinitionRevision(taskDefinitionRevision);
-    // ecs-native services have a fixed, unversioned name (app-stack-detail, no -vNNN), so Frigga
-    // parses no sequence; classic ecs always deploys a versioned service (via
-    // EcsServerGroupNameResolver) with a numeric sequence. cloudProvider/type are stamped "ecs" for
-    // both, so this moniker-derived flag is how Deck distinguishes a native service (e.g. to pick
-    // the native task-definition-revision rollback instead of the classic disabled-sibling one).
-    boolean isNative = moniker != null && moniker.getSequence() == null;
+    // Name shape is not ownership evidence: external Terraform/CDK/hand-created services can also
+    // be unversioned. Only the durable ECS service tag persisted by ecs-native marks ownership.
+    boolean isNative = service != null && service.isEcsNative();
     if (isNative) {
       serverGroup.setIsNative(true);
       // Only on the details path (opening a server group), and only for native services, attach
@@ -493,7 +490,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
   private void attachTaskDefinitionRevisions(
       EcsServerGroup serverGroup, String account, String region, Service service) {
     try {
-      NetflixECSCredentials credentials = credentialsRepository.getOne(account);
+      NetflixECSCredentials credentials = resolveCredentials(account);
       if (credentials == null) {
         return;
       }
@@ -509,6 +506,18 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
           region,
           e);
     }
+  }
+
+  private NetflixECSCredentials resolveCredentials(String account) {
+    NetflixECSCredentials exact = credentialsRepository.getOne(account);
+    if (exact != null || account == null) {
+      return exact;
+    }
+    Set<? extends NetflixECSCredentials> all = credentialsRepository.getAll();
+    if (all == null) {
+      return null;
+    }
+    return all.stream().filter(c -> account.equalsIgnoreCase(c.getName())).findFirst().orElse(null);
   }
 
   private ServerGroup.InstanceCounts buildInstanceCount(Set<Instance> instances) {
