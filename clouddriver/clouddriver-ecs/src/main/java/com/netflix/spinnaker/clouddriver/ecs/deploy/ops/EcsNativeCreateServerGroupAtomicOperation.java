@@ -89,9 +89,9 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     // ecs-native is always in-place: there is one durable ECS service per cluster, named by the
     // fixed (unversioned) family name. If that service already exists, roll it via a native
     // UpdateService; only the first-ever deploy (service absent) falls through to CreateService.
-    String existingServiceName = resolveExistingServiceName();
-    if (existingServiceName != null) {
-      return updateExistingServiceInPlace(existingServiceName);
+    Service existingService = resolveExistingService();
+    if (existingService != null) {
+      return updateExistingServiceInPlace(existingService);
     }
     updateTaskStatus("No existing ecs-native service found; creating the initial durable service.");
     return super.operate(priorOutputs);
@@ -136,7 +136,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    * cluster -- independent of any deploy-stage source block. This is what makes every ecs-native
    * redeploy an in-place UpdateService rather than a colliding CreateService.
    */
-  protected String resolveExistingServiceName() {
+  protected Service resolveExistingService() {
     EcsClient ecs = getAmazonEcsClient();
     String fixedServiceName = buildEcsServerGroupName(ecs, null).getServiceName();
 
@@ -152,16 +152,24 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     if (result.services().isEmpty() || "INACTIVE".equals(result.services().get(0).status())) {
       return null;
     }
-    if (!EcsNativeServiceTag.isNative(result.services().get(0).tags())) {
+    Service service = result.services().get(0);
+    if (!EcsNativeServiceTag.isNative(service.tags())) {
       throw new IllegalStateException(
           "ECS service "
               + fixedServiceName
               + " already exists but is not marked as owned by ecs-native; refusing to update an external service.");
     }
-    return fixedServiceName;
+    return service;
   }
 
-  private DeploymentResult updateExistingServiceInPlace(String existingServiceName) {
+  /** Retained for tests and callers that only need the fixed service name. */
+  protected String resolveExistingServiceName() {
+    Service service = resolveExistingService();
+    return service == null ? null : service.serviceName();
+  }
+
+  private DeploymentResult updateExistingServiceInPlace(Service existingService) {
+    String existingServiceName = existingService.serviceName();
     updateTaskStatus(
         "Rolling ecs-native service "
             + existingServiceName
@@ -177,7 +185,8 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     UpdateServiceRequest.Builder requestBuilder;
     if (description.getCapacity() != null) {
       requestBuilder =
-          buildAuthoritativeUpdateRequest(ecs, taskDefinition.taskDefinitionArn(), serverGroupName);
+          buildAuthoritativeUpdateRequest(
+              ecs, taskDefinition.taskDefinitionArn(), serverGroupName, existingService);
       // Application Auto Scaling owns min/max capacity, while this native deploy owns the desired
       // count. Re-registering the target makes capacity edits explicit instead of silently ignored.
     } else {
@@ -190,7 +199,8 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
 
       validateBlueGreenInPlaceConfig(nativeDescription());
 
-      DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
+      DeploymentConfiguration deploymentConfiguration =
+          buildDeploymentConfiguration(existingService.deploymentConfiguration());
       if (deploymentConfiguration != null) {
         requestBuilder.deploymentConfiguration(deploymentConfiguration);
       }
@@ -222,7 +232,10 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    * replacement exposed here.
    */
   private UpdateServiceRequest.Builder buildAuthoritativeUpdateRequest(
-      EcsClient ecs, String taskDefinitionArn, EcsServerGroupName serverGroupName) {
+      EcsClient ecs,
+      String taskDefinitionArn,
+      EcsServerGroupName serverGroupName,
+      Service existingService) {
     Namer<EcsResource> namer =
         NamerRegistry.lookup()
             .withProvider(EcsCloudProvider.ID)
@@ -250,7 +263,8 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
         .healthCheckGracePeriodSeconds(serviceRequest.healthCheckGracePeriodSeconds())
         .enableExecuteCommand(serviceRequest.enableExecuteCommand())
         .loadBalancers(serviceRequest.loadBalancers())
-        .deploymentConfiguration(serviceRequest.deploymentConfiguration())
+        .deploymentConfiguration(
+            buildDeploymentConfiguration(existingService.deploymentConfiguration()))
         .forceNewDeployment(true);
   }
 
@@ -455,7 +469,8 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    * in-place update that only changes the task definition does not overwrite the service's existing
    * rolling bounds.
    */
-  private DeploymentConfiguration buildDeploymentConfiguration() {
+  private DeploymentConfiguration buildDeploymentConfiguration(
+      DeploymentConfiguration existingConfiguration) {
     EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
     DeploymentAlarms alarms = buildDeploymentAlarms(nativeDescription);
     boolean hasConfig =
@@ -470,18 +485,24 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
       return null;
     }
 
-    DeploymentConfiguration.Builder builder = DeploymentConfiguration.builder();
+    DeploymentConfiguration.Builder builder =
+        existingConfiguration == null
+            ? DeploymentConfiguration.builder()
+            : existingConfiguration.toBuilder();
     if (nativeDescription.getMinimumHealthyPercent() != null) {
       builder.minimumHealthyPercent(nativeDescription.getMinimumHealthyPercent());
     }
     if (nativeDescription.getMaximumPercent() != null) {
       builder.maximumPercent(nativeDescription.getMaximumPercent());
     }
-    builder.deploymentCircuitBreaker(
-        DeploymentCircuitBreaker.builder()
-            .enable(nativeDescription.isEnableDeploymentCircuitBreaker())
-            .rollback(nativeDescription.isDeploymentCircuitBreakerRollback())
-            .build());
+    if (nativeDescription.isEnableDeploymentCircuitBreaker()
+        || nativeDescription.isDeploymentCircuitBreakerRollback()) {
+      builder.deploymentCircuitBreaker(
+          DeploymentCircuitBreaker.builder()
+              .enable(nativeDescription.isEnableDeploymentCircuitBreaker())
+              .rollback(nativeDescription.isDeploymentCircuitBreakerRollback())
+              .build());
+    }
     if (alarms != null) {
       builder.alarms(alarms);
     }

@@ -29,6 +29,7 @@ import software.amazon.awssdk.services.ecs.EcsClient;
 import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
 import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
+import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
 import software.amazon.awssdk.services.ecs.model.Service;
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 
@@ -59,6 +60,23 @@ public class EcsNativeUpdateServiceAtomicOperation
       cluster =
           containerInformationService.getClusterName(
               serviceName, description.getAccount(), description.getRegion());
+    }
+
+    DeploymentConfiguration existingConfiguration = null;
+    if (hasDeploymentConfiguration()) {
+      Service existingService =
+          ecs
+              .describeServices(
+                  DescribeServicesRequest.builder().cluster(cluster).services(serviceName).build())
+              .services()
+              .stream()
+              .findFirst()
+              .orElse(null);
+      if (existingService == null) {
+        throw new IllegalStateException(
+            String.format("ECS service %s was not found in cluster %s.", serviceName, cluster));
+      }
+      existingConfiguration = existingService.deploymentConfiguration();
     }
 
     UpdateServiceRequest.Builder requestBuilder =
@@ -98,7 +116,8 @@ public class EcsNativeUpdateServiceAtomicOperation
       requestBuilder.loadBalancers(description.getLoadBalancers());
     }
 
-    DeploymentConfiguration deploymentConfiguration = buildDeploymentConfiguration();
+    DeploymentConfiguration deploymentConfiguration =
+        buildDeploymentConfiguration(existingConfiguration);
     if (deploymentConfiguration != null) {
       requestBuilder.deploymentConfiguration(deploymentConfiguration);
     }
@@ -135,12 +154,24 @@ public class EcsNativeUpdateServiceAtomicOperation
     return result;
   }
 
+  private boolean hasDeploymentConfiguration() {
+    return description.getMinimumHealthyPercent() != null
+        || description.getMaximumPercent() != null
+        || description.isEnableDeploymentCircuitBreaker()
+        || description.isDeploymentCircuitBreakerRollback()
+        || (description.getAlarmNames() != null && !description.getAlarmNames().isEmpty())
+        || description.isEnableDeploymentAlarms()
+        || StringUtils.isNotBlank(description.getDeploymentStrategy())
+        || description.getBakeTimeInMinutes() != null;
+  }
+
   /**
    * Builds a {@link DeploymentConfiguration} only when the description actually specifies one, so
    * an update that only changes the task definition does not overwrite the service's existing
    * rolling bounds.
    */
-  private DeploymentConfiguration buildDeploymentConfiguration() {
+  private DeploymentConfiguration buildDeploymentConfiguration(
+      DeploymentConfiguration existingConfiguration) {
     DeploymentAlarms alarms = buildDeploymentAlarms();
     boolean hasConfig =
         description.getMinimumHealthyPercent() != null
@@ -154,18 +185,24 @@ public class EcsNativeUpdateServiceAtomicOperation
       return null;
     }
 
-    DeploymentConfiguration.Builder builder = DeploymentConfiguration.builder();
+    DeploymentConfiguration.Builder builder =
+        existingConfiguration == null
+            ? DeploymentConfiguration.builder()
+            : existingConfiguration.toBuilder();
     if (description.getMinimumHealthyPercent() != null) {
       builder.minimumHealthyPercent(description.getMinimumHealthyPercent());
     }
     if (description.getMaximumPercent() != null) {
       builder.maximumPercent(description.getMaximumPercent());
     }
-    builder.deploymentCircuitBreaker(
-        DeploymentCircuitBreaker.builder()
-            .enable(description.isEnableDeploymentCircuitBreaker())
-            .rollback(description.isDeploymentCircuitBreakerRollback())
-            .build());
+    if (description.isEnableDeploymentCircuitBreaker()
+        || description.isDeploymentCircuitBreakerRollback()) {
+      builder.deploymentCircuitBreaker(
+          DeploymentCircuitBreaker.builder()
+              .enable(description.isEnableDeploymentCircuitBreaker())
+              .rollback(description.isDeploymentCircuitBreakerRollback())
+              .build());
+    }
     if (alarms != null) {
       builder.alarms(alarms);
     }

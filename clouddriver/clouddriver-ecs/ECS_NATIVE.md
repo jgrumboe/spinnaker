@@ -226,10 +226,10 @@ The orca server-group creator is `EcsNativeServerGroupCreator extends EcsServerG
 
 5. **Two distinct "strategy" axes — don't conflate them.** ecs-native has two independent knobs:
    - The **Spinnaker deployment strategy** (the stage's `strategy`: `None` / `redblack` /
-     `rollingredblack` / `highlander`) must be **`None`** for ecs-native. Deck locks the picker to
-     `None` (`DeploymentStrategyRegistry.registerProvider('ecs-native', [])`), and orca's
-     `CreateServerGroupStage.basicTasks` throws `IllegalStateException` for a hand-edited pipeline
-     with any non-`None` strategy. A Spinnaker red/black strategy would try to stand up a new
+     `rollingredblack` / `highlander`) must be **`None`** for ecs-native. Deck's provider registry
+     omits native strategies, but existing commands can still retain a stale strategy value, so the
+     native toggle clears it and validation rejects any non-`None` value. Orca also rejects hand-edited
+     pipelines with any non-`None` strategy. A Spinnaker red/black strategy would try to stand up a new
      versioned server group and disable/destroy the old one, which either collides with the fixed
      service name or runs as inert no-ops.
    - The **ECS deployment strategy** (`deploymentStrategy` in the native description: `ROLLING` /

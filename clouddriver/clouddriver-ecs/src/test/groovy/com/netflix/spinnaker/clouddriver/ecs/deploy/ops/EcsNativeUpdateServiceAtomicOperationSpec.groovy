@@ -23,12 +23,21 @@ import software.amazon.awssdk.services.ecs.model.LoadBalancer
 import software.amazon.awssdk.services.ecs.model.NetworkConfiguration
 import software.amazon.awssdk.services.ecs.model.PlacementConstraint
 import software.amazon.awssdk.services.ecs.model.PlacementStrategy
+import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker
+import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration
+import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
 import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.ServiceRegistry
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse
 
 class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
+
+  def setup() {
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+        .services(Service.builder().build())
+        .build()
+  }
 
   void 'should update the service in place with native deployment configuration'() {
     given:
@@ -228,6 +237,51 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         req.healthCheckGracePeriodSeconds() == 60 &&
         req.enableExecuteCommand() == true &&
         req.loadBalancers() == loadBalancers
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
+  }
+
+  void 'preserves unspecified deployment configuration fields on partial update'() {
+    given:
+    def serviceName = 'myapp-stack-detail'
+    def credentials = TestCredential.named('test', [:])
+    def existingConfiguration = DeploymentConfiguration.builder()
+        .minimumHealthyPercent(60)
+        .maximumPercent(180)
+        .deploymentCircuitBreaker(DeploymentCircuitBreaker.builder().enable(true).rollback(true).build())
+        .strategy('ROLLING')
+        .bakeTimeInMinutes(10)
+        .build()
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName(serviceName).deploymentConfiguration(existingConfiguration).build())
+        .build()
+
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: serviceName,
+      taskDefinition: 'task-def-arn',
+      bakeTimeInMinutes: 20
+    ))
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    credentialsRepository.getOne(_) >> credentials
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest req ->
+      req.deploymentConfiguration().minimumHealthyPercent() == 60 &&
+        req.deploymentConfiguration().maximumPercent() == 180 &&
+        req.deploymentConfiguration().deploymentCircuitBreaker().enable() == true &&
+        req.deploymentConfiguration().deploymentCircuitBreaker().rollback() == true &&
+        req.deploymentConfiguration().strategyAsString() == 'ROLLING' &&
+        req.deploymentConfiguration().bakeTimeInMinutes() == 20
     } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
         .service(Service.builder().serviceName(serviceName).build())
         .build()
