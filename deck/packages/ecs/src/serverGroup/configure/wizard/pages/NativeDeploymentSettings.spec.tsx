@@ -158,4 +158,34 @@ describe('NativeDeploymentSettings', () => {
 
     expect(onFieldChange).toHaveBeenCalledWith('alarmNames', []);
   });
+
+  it('clears the Spinnaker strategy when native deployment is enabled', () => {
+    const onFieldChange = jasmine.createSpy('onFieldChange');
+    const wrapper = mount(
+      <NativeDeploymentSettings
+        application={null as any}
+        command={buildCommand({ strategy: 'redblack' })}
+        configureCommand={() => Promise.resolve()}
+        onFieldChange={onFieldChange}
+      />,
+    );
+
+    wrapper.find('[data-test-id="NativeDeployment.useEcsNative"]').simulate('change', { target: { checked: true } });
+
+    expect(onFieldChange).toHaveBeenCalledWith('strategy', 'none');
+  });
+
+  it('shows minimum and maximum healthy deployment bounds', () => {
+    const wrapper = mount(
+      <NativeDeploymentSettings
+        application={null as any}
+        command={buildCommand({ cloudProvider: 'ecs-native' })}
+        configureCommand={() => Promise.resolve()}
+        onFieldChange={() => {}}
+      />,
+    );
+
+    expect(wrapper.find('[data-test-id="NativeDeployment.minimumHealthyPercent"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test-id="NativeDeployment.maximumPercent"]').exists()).toBe(true);
+  });
 });

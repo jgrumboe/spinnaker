@@ -127,11 +127,14 @@ export interface IEcsServerGroupCommand {
    * Native ECS Deployment wizard page. See EcsServerGroupTransformer.
    */
   cloudProvider?: string;
+  strategy?: string;
   deploymentCircuitBreakerRollback?: boolean;
   alarmNames?: string[];
   enableDeploymentAlarms?: boolean;
   deploymentAlarmsRollback?: boolean;
   deploymentStrategy?: string;
+  minimumHealthyPercent?: number;
+  maximumPercent?: number;
   bakeTimeInMinutes?: number;
   alternateTargetGroupArn?: string;
   productionListenerRule?: string;

@@ -174,6 +174,32 @@ export const validateEcsNativeDeployment: Validator = (values) => {
   if (values.cloudProvider !== 'ecs-native') {
     return errors;
   }
+  const strategy = values.strategy;
+  if (required(strategy) && strategy !== 'none' && strategy !== '') {
+    errors.strategy = 'Native ECS deployments require the Spinnaker deployment strategy to be None.';
+  }
+
+  const minimumHealthyPercent = values.minimumHealthyPercent;
+  const maximumPercent = values.maximumPercent;
+  if (
+    required(minimumHealthyPercent) &&
+    (!Number.isInteger(minimumHealthyPercent) || minimumHealthyPercent < 1 || minimumHealthyPercent > 100)
+  ) {
+    errors.minimumHealthyPercent = 'Minimum healthy percent must be an integer from 1 to 100.';
+  }
+  if (required(maximumPercent) && (!Number.isInteger(maximumPercent) || maximumPercent < 100)) {
+    errors.maximumPercent = 'Maximum percent must be an integer of at least 100.';
+  }
+  if (
+    required(minimumHealthyPercent) &&
+    required(maximumPercent) &&
+    Number.isInteger(minimumHealthyPercent) &&
+    Number.isInteger(maximumPercent) &&
+    maximumPercent < minimumHealthyPercent
+  ) {
+    errors.maximumPercent = 'Maximum percent cannot be less than minimum healthy percent.';
+  }
+
   const blueGreenFields = [
     'alternateTargetGroupArn',
     'productionListenerRule',

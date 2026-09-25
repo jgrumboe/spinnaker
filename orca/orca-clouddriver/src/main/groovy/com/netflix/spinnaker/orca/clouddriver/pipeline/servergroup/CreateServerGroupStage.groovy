@@ -92,11 +92,10 @@ class CreateServerGroupStage extends AbstractDeployStrategyStage implements Forc
     // circuit breaker rolled it back). Gated to ecs-native so classic ecs and every other provider
     // are unaffected.
     //
-    // Ordering matters: this wait runs *between* the two forceCacheRefresh tasks (after the first
-    // refresh + tagging, before waitForUpInstances and the trailing refresh). That places the final
-    // forceCacheRefresh *after* ECS has settled to COMPLETED, so the refresh pulls the completed
-    // rollout state into clouddriver's cache immediately instead of leaving the clusters-view card
-    // header stale at IN_PROGRESS until the next scheduled caching cycle. It also relies on
+    // Ordering matters: this wait runs before waitForUpInstances and the trailing forceCacheRefresh.
+    // That places the final forceCacheRefresh after ECS has settled to COMPLETED, so the refresh pulls
+    // the completed rollout state into clouddriver's cache immediately instead of leaving the
+    // clusters-view card header stale at IN_PROGRESS until the next scheduled caching cycle. It also relies on
     // deploy.server.groups (set by createServerGroup) being present for the task's
     // account/region/serverGroupName resolution, which it is by this point.
     if (ECS_NATIVE_CLOUD_PROVIDER == getCloudProvider(stage)) {

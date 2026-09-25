@@ -37,7 +37,13 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
             aria-label="Use native ECS deployment"
             checked={useNative}
             data-test-id="NativeDeployment.useEcsNative"
-            onChange={(event) => onFieldChange('cloudProvider', event.target.checked ? ECS_NATIVE : 'ecs')}
+            onChange={(event) => {
+              const nextCloudProvider = event.target.checked ? ECS_NATIVE : 'ecs';
+              onFieldChange('cloudProvider', nextCloudProvider);
+              if (nextCloudProvider === ECS_NATIVE) {
+                onFieldChange('strategy', 'none');
+              }
+            }}
             type="checkbox"
           />
         </div>
@@ -135,6 +141,41 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
                 <option value="ROLLING">Rolling</option>
                 <option value="BLUE_GREEN">Blue/Green</option>
               </select>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <div className="col-md-5 sm-label-right">Minimum healthy percent</div>
+            <div className="col-md-2">
+              <input
+                aria-label="Minimum healthy percent"
+                className="form-control input-sm no-spel"
+                data-test-id="NativeDeployment.minimumHealthyPercent"
+                onChange={(event) =>
+                  onFieldChange('minimumHealthyPercent', event.target.value === '' ? null : Number(event.target.value))
+                }
+                type="number"
+                min="1"
+                max="100"
+                value={command.minimumHealthyPercent ?? ''}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <div className="col-md-5 sm-label-right">Maximum percent</div>
+            <div className="col-md-2">
+              <input
+                aria-label="Maximum percent"
+                className="form-control input-sm no-spel"
+                data-test-id="NativeDeployment.maximumPercent"
+                onChange={(event) =>
+                  onFieldChange('maximumPercent', event.target.value === '' ? null : Number(event.target.value))
+                }
+                type="number"
+                min="100"
+                value={command.maximumPercent ?? ''}
+              />
             </div>
           </div>
 

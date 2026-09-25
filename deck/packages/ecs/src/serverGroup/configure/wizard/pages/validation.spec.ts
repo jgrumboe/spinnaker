@@ -100,4 +100,28 @@ describe('validateEcsNativeDeployment', () => {
     } as any);
     expect(errors).toEqual({});
   });
+
+  it('rejects a non-None Spinnaker strategy for native ECS', () => {
+    const errors = validateEcsNativeDeployment({ cloudProvider: 'ecs-native', strategy: 'redblack' } as any);
+    expect(errors.strategy).toBeTruthy();
+  });
+
+  it('validates native rolling deployment bounds', () => {
+    const errors = validateEcsNativeDeployment({
+      cloudProvider: 'ecs-native',
+      minimumHealthyPercent: 0,
+      maximumPercent: 99,
+    } as any);
+    expect(errors.minimumHealthyPercent).toBeTruthy();
+    expect(errors.maximumPercent).toBeTruthy();
+  });
+
+  it('requires maximum percent to be at least minimum healthy percent', () => {
+    const errors = validateEcsNativeDeployment({
+      cloudProvider: 'ecs-native',
+      minimumHealthyPercent: 80,
+      maximumPercent: 70,
+    } as any);
+    expect(errors.maximumPercent).toBeTruthy();
+  });
 });
