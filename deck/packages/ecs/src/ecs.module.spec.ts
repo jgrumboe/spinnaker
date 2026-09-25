@@ -16,7 +16,7 @@ describe('ECS package registration', () => {
     );
     expect(CloudProviderRegistry.getValue('ecs', 'adHocInfrastructureWritesEnabled')).toBeTrue();
     const detailsSections = CloudProviderRegistry.getValue('ecs', 'serverGroup.detailsSections');
-    expect(detailsSections.length).toBe(9);
+    expect(detailsSections.length).toBe(10);
     expect(detailsSections.every((section: unknown) => typeof section === 'function')).toBeTrue();
     expect(CloudProviderRegistry.getValue('ecs', 'securityGroup.reader')).toBe(EcsSecurityGroupReader);
     expect(CloudProviderRegistry.getValue('ecs', 'securityGroup.transformer')).toBe(EcsSecurityGroupTransformer);

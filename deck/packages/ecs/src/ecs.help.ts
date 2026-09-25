@@ -86,6 +86,8 @@ const helpContents: { [key: string]: string } = {
     '<p>Designates the relative percentage of the total number of tasks launched that should use the specified capacity provider.</p>',
   'ecs.evaluateExpression':
     '<p>Whether to evaluate <a href="https://spinnaker.io/guides/user/pipeline/expressions/" target="_blank"><b>pipeline expressions</b></a> within the task definition artifact in this stage. Checking this box let\'s you evaluate your task definition artifact coming from external sources.(e.g. GitHub) </p>',
+  'ecs.native.blueGreenAdvanced':
+    '<p>The ALB traffic-shift configuration for a Blue/Green deploy: an alternate target group, the production and test listener rules, and the IAM role ECS assumes to modify them. ECS routes test traffic at the new task set through the test listener rule, then shifts production traffic over.</p><p>These are <b>optional only when the service has no load balancer</b>. When a target group is attached, AWS ECS <b>requires</b> all four for a Blue/Green deploy and rejects it otherwise. Provide all four together, or all left blank; a partial set is always invalid.</p>',
 };
 
 Object.keys(helpContents).forEach((key) => HelpContentsRegistry.register(key, helpContents[key]));
