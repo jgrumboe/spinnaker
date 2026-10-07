@@ -573,7 +573,7 @@ public class CreateServerGroupAtomicOperation
             .placementStrategy(description.getPlacementStrategySequence())
             .serviceRegistries(serviceRegistries)
             .deploymentConfiguration(deploymentConfiguration)
-            .enableExecuteCommand(description.isEnableExecuteCommand());
+            .enableExecuteCommand(Boolean.TRUE.equals(description.getEnableExecuteCommand()));
 
     List<Tag> taskDefTags = new LinkedList<>();
     if (description.getTags() != null && !description.getTags().isEmpty()) {
@@ -797,7 +797,7 @@ public class CreateServerGroupAtomicOperation
     return null;
   }
 
-  private String inferAssumedRoleArn(AmazonCredentials credentials) {
+  protected String inferAssumedRoleArn(AmazonCredentials credentials) {
     String role;
     if (credentials instanceof AssumeRoleAmazonCredentials) {
       role = ((AssumeRoleAmazonCredentials) credentials).getAssumeRole();

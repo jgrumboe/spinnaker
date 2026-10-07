@@ -22,6 +22,7 @@ import { registerEcsShrinkClusterStage } from './pipeline/stages/shrinkCluster/e
 import { EcsSecurityGroupDetails } from './securityGroup/details/EcsSecurityGroupDetails';
 import { EcsSecurityGroupReader } from './securityGroup/securityGroup.reader';
 import { EcsSecurityGroupTransformer } from './securityGroup/securityGroup.transformer';
+import { registerEcsServerGroupHeader } from './serverGroup/EcsServerGroupHeader';
 import { EcsServerGroupCommandBuilder } from './serverGroup/configure/serverGroupCommandBuilder.service';
 import { EcsCloneServerGroupModal } from './serverGroup/configure/wizard/EcsCloneServerGroupModal';
 import { EcsServerGroupActions } from './serverGroup/details/EcsServerGroupActions';
@@ -41,6 +42,7 @@ import { EcsServerGroupInformationSection } from './serverGroup/details/sections
 import { EcsServerGroupTransformer } from './serverGroup/serverGroup.transformer';
 
 import './logo/ecs.logo.less';
+import './serverGroup/ecsServerGroup.less';
 
 export function registerEcsProvider(): void {
   CloudProviderRegistry.registerProvider('ecs', {
@@ -98,5 +100,6 @@ export function registerEcsPipelineStages(): void {
 }
 
 registerEcsProvider();
+registerEcsServerGroupHeader('ecs');
 registerEcsPipelineStages();
 DeploymentStrategyRegistry.registerProvider('ecs', ['redblack']);

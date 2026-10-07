@@ -91,6 +91,16 @@ const renderCapacityProvider = (command: IEcsServerGroupCommand): ShallowWrapper
 };
 
 describe('EcsCloneServerGroupModal', () => {
+  it('shows an explicit unsupported state for native clones instead of rendering a submit wizard', () => {
+    const wrapper = shallow(
+      <EcsCloneServerGroupModal {...buildProps(buildCommand({ cloudProvider: 'ecs-native' }))} />,
+      { disableLifecycleMethods: true } as any,
+    );
+
+    expect(wrapper.find(WizardModal).exists()).toBe(false);
+    expect(wrapper.text()).toContain('Clone server group unavailable');
+  });
+
   it('does not set state when backing data resolves after unmount', async () => {
     const modal = new EcsCloneServerGroupModal(buildProps(buildCommand())) as any;
     let resolveBackingData: () => void;

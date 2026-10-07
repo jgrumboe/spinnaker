@@ -189,7 +189,11 @@ function buildServerGroupCommandFromExisting(application, serverGroup, mode = 'c
     command.viewState.mode = mode;
     // Preserve the source server group's provider so cloning an ecs-native service keeps the
     // "Use native ECS deployment" toggle checked, rather than silently reverting to plain ecs.
-    if (serverGroup.cloudProvider === 'ecs-native' || serverGroup.type === 'ecs-native') {
+    if (
+      serverGroup.isNative === true ||
+      serverGroup.cloudProvider === 'ecs-native' ||
+      serverGroup.type === 'ecs-native'
+    ) {
       command.cloudProvider = 'ecs-native';
     }
     return command;

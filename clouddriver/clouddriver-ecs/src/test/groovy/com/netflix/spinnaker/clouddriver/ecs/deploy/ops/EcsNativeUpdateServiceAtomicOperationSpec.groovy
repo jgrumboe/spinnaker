@@ -16,6 +16,7 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops
 
+import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag
 import com.netflix.spinnaker.clouddriver.ecs.TestCredential
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeUpdateServiceDescription
 import software.amazon.awssdk.services.ecs.model.CapacityProviderStrategyItem
@@ -28,16 +29,11 @@ import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
 import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.ServiceRegistry
+import software.amazon.awssdk.services.ecs.model.Tag
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse
 
 class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
-
-  def setup() {
-    ecs.describeServices(_) >> DescribeServicesResponse.builder()
-        .services(Service.builder().build())
-        .build()
-  }
 
   void 'should update the service in place with native deployment configuration'() {
     given:
@@ -63,6 +59,9 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
     containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
     credentialsRepository.getOne(_) >> credentials
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+        .services(Service.builder().tags(EcsNativeServiceTag.tag()).build())
+        .build()
 
     when:
     operation.operate([])
@@ -101,6 +100,9 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
     containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
     credentialsRepository.getOne(_) >> credentials
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+        .services(Service.builder().tags(EcsNativeServiceTag.tag()).build())
+        .build()
 
     when:
     operation.operate([])
@@ -115,38 +117,29 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .build()
   }
 
-  void 'should apply blue/green strategy and bake time'() {
+  void 'rejects blue/green before making AWS calls because lifecycle actions are not modeled'() {
     given:
-    def serviceName = 'myapp-kcats-liated-v007'
     def credentials = TestCredential.named('test', [:])
-
     def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
       credentials: credentials,
       region: 'us-west-1',
-      serverGroupName: serviceName,
+      serverGroupName: 'myapp-stack-detail',
       taskDefinition: 'task-def-arn',
-      deploymentStrategy: 'BLUE_GREEN',
-      bakeTimeInMinutes: 15
+      deploymentStrategy: 'BLUE_GREEN'
     ))
 
     operation.amazonClientProvider = amazonClientProvider
     operation.credentialsRepository = credentialsRepository
     operation.containerInformationService = containerInformationService
 
-    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
-    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
-    credentialsRepository.getOne(_) >> credentials
-
     when:
     operation.operate([])
 
     then:
-    1 * ecs.updateService({ UpdateServiceRequest req ->
-      req.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN' &&
-        req.deploymentConfiguration().bakeTimeInMinutes() == 15
-    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
-        .service(Service.builder().serviceName(serviceName).build())
-        .build()
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('StopServiceDeployment')
+    0 * amazonClientProvider.getAmazonEcsV2(_, _)
+    0 * ecs._
   }
 
   void 'should send deployment alarms when alarm names are configured'() {
@@ -170,6 +163,9 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
     containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
     credentialsRepository.getOne(_) >> credentials
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+        .services(Service.builder().tags(EcsNativeServiceTag.tag()).build())
+        .build()
 
     when:
     operation.operate([])
@@ -184,6 +180,77 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .build()
   }
 
+
+  void 'rejects a stored blue/green strategy when update omits the strategy before any AWS write'() {
+    given:
+    def credentials = TestCredential.named('test', [:])
+    def serviceName = 'myapp-stack-detail'
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: serviceName,
+      taskDefinition: 'task-def-arn'
+    ))
+
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    credentialsRepository.getOne(_) >> credentials
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+      .services(Service.builder()
+        .serviceName(serviceName)
+        .tags(EcsNativeServiceTag.tag())
+        .deploymentConfiguration(DeploymentConfiguration.builder().strategy('BLUE_GREEN').build())
+        .build())
+      .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('StopServiceDeployment')
+    0 * ecs.updateService(_)
+  }
+
+  void 'explicitly disables ECS Exec on an existing enabled service'() {
+    given:
+    def credentials = TestCredential.named('test', [:])
+    def serviceName = 'myapp-stack-detail'
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: serviceName,
+      taskDefinition: 'task-def-arn',
+      enableExecuteCommand: false
+    ))
+
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    credentialsRepository.getOne(_) >> credentials
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+      .services(Service.builder()
+        .serviceName(serviceName)
+        .tags(EcsNativeServiceTag.tag())
+        .enableExecuteCommand(true)
+        .build())
+      .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest request ->
+      request.enableExecuteCommand() == false
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+      .service(Service.builder().serviceName(serviceName).build())
+      .build()
+  }
 
   void 'should apply mutable service shape fields on update'() {
     given:
@@ -221,6 +288,9 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
     containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
     credentialsRepository.getOne(_) >> credentials
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+        .services(Service.builder().tags(EcsNativeServiceTag.tag()).build())
+        .build()
 
     when:
     operation.operate([])
@@ -254,7 +324,7 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .bakeTimeInMinutes(10)
         .build()
     ecs.describeServices(_) >> DescribeServicesResponse.builder()
-        .services(Service.builder().serviceName(serviceName).deploymentConfiguration(existingConfiguration).build())
+        .services(Service.builder().serviceName(serviceName).deploymentConfiguration(existingConfiguration).tags(EcsNativeServiceTag.tag()).build())
         .build()
 
     def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
@@ -270,9 +340,12 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
 
     amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
     credentialsRepository.getOne(_) >> credentials
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+
+    def taskDefinition = 'arn:aws:ecs:us-west-1:123456789012:task-definition/myapp:42'
 
     when:
-    operation.operate([])
+    def result = operation.operate([])
 
     then:
     1 * ecs.updateService({ UpdateServiceRequest req ->
@@ -283,7 +356,80 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         req.deploymentConfiguration().strategyAsString() == 'ROLLING' &&
         req.deploymentConfiguration().bakeTimeInMinutes() == 20
     } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
-        .service(Service.builder().serviceName(serviceName).build())
+        .service(Service.builder().serviceName(serviceName).taskDefinition(taskDefinition).currentServiceDeployment('service-deployment-1').tags(EcsNativeServiceTag.tag()).build())
         .build()
+    result.serverGroupNames == ["us-west-1:${serviceName}"]
+    result.serverGroupNameByRegion == ['us-west-1': serviceName]
+    result.deployments.first().cloudProvider == 'ecs-native'
+    result.deployments.first().account == 'test'
+    result.deployments.first().location == 'us-west-1'
+    result.deployments.first().serverGroupName == serviceName
+    result.deployments.first().metadata.ecsNativeExpectedTaskDefinition == taskDefinition
+    result.deployments.first().metadata.ecsNativeExpectedServiceDeploymentArn == 'service-deployment-1'
+  }
+
+  void 'clears an existing circuit breaker when update explicitly disables it'() {
+    given:
+    def credentials = TestCredential.named('test', [:])
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: 'myapp-stack-detail',
+      taskDefinition: 'task-def-arn',
+      enableDeploymentCircuitBreaker: false
+    ))
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    credentialsRepository.getOne(_) >> credentials
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+      .services(Service.builder()
+        .tags(EcsNativeServiceTag.tag())
+        .deploymentConfiguration(DeploymentConfiguration.builder()
+          .deploymentCircuitBreaker(DeploymentCircuitBreaker.builder().enable(true).rollback(true).build())
+          .build())
+        .build())
+      .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ UpdateServiceRequest request ->
+      request.deploymentConfiguration().deploymentCircuitBreaker().enable() == false &&
+        request.deploymentConfiguration().deploymentCircuitBreaker().rollback() == false
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+      .service(Service.builder().serviceName('myapp-stack-detail').build())
+      .build()
+  }
+
+  void 'refuses to update an unowned service before any AWS write'() {
+    given:
+    def credentials = TestCredential.named('test', [:])
+    def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
+      credentials: credentials,
+      region: 'us-west-1',
+      serverGroupName: 'external-service',
+      taskDefinition: 'task-def-arn'
+    ))
+    operation.amazonClientProvider = amazonClientProvider
+    operation.credentialsRepository = credentialsRepository
+    operation.containerInformationService = containerInformationService
+
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    credentialsRepository.getOne(_) >> credentials
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+      .services(Service.builder().tags(Tag.builder().key('owner').value('external').build()).build())
+      .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    thrown(IllegalStateException)
+    0 * ecs.updateService(_)
   }
 }

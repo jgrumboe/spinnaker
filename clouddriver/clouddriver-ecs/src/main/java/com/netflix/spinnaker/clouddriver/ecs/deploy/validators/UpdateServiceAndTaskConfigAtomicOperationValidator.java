@@ -81,6 +81,9 @@ public class UpdateServiceAndTaskConfigAtomicOperationValidator extends CommonVa
         && !StringUtils.equalsIgnoreCase(nativeDescription.getDeploymentStrategy(), "BLUE_GREEN")) {
       rejectValue(errors, "deploymentStrategy", "invalid");
     }
+    if (StringUtils.equalsIgnoreCase(nativeDescription.getDeploymentStrategy(), "BLUE_GREEN")) {
+      rejectValue(errors, "deploymentStrategy", "unsupported");
+    }
 
     boolean hasAlarmNames =
         nativeDescription.getAlarmNames() != null

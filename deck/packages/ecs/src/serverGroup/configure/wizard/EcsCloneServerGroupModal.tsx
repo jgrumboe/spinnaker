@@ -18,6 +18,7 @@ import {
   ReactModal,
   REST,
   TaskMonitor,
+  ValidationMessage,
   withRouter,
   WizardModal,
   WizardPage,
@@ -563,6 +564,27 @@ export class EcsCloneServerGroupModalComponent extends React.Component<
           onDismiss={dismissModal}
           onTemplateSelected={this.templateSelected}
         />
+      );
+    }
+
+    if (command.cloudProvider === 'ecs-native') {
+      return (
+        <div className="modal-content">
+          <div className="modal-header">
+            <h4>Clone server group unavailable</h4>
+          </div>
+          <div className="modal-body">
+            <ValidationMessage
+              message="Cloning an ecs-native server group is unavailable because no safe durable-service deployment path is modeled. Use a createServerGroup stage instead."
+              type="warning"
+            />
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-default" onClick={dismissModal} type="button">
+              Close
+            </button>
+          </div>
+        </div>
       );
     }
 

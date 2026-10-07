@@ -2,6 +2,7 @@ import { CloudProviderRegistry, DeploymentStrategyRegistry, SETTINGS } from '@sp
 
 import { registerEcsNativeProvider } from './ecsNative.module';
 import { EcsCloneServerGroupModal } from './serverGroup/configure/wizard/EcsCloneServerGroupModal';
+import { EcsServerGroupHeader } from './serverGroup/EcsServerGroupHeader';
 import { EcsServerGroupTransformer } from './serverGroup/serverGroup.transformer';
 
 describe('registerEcsNativeProvider', () => {
@@ -23,6 +24,7 @@ describe('registerEcsNativeProvider', () => {
     expect(ecsNativeConfig.name).toBe('EC2 Container Service (Native)');
     expect(ecsNativeConfig.name).not.toBe(ecsConfig.name);
     expect(ecsNativeConfig.logo.path).toBeTruthy();
+    expect(ecsNativeConfig.serverGroups.pod.header).toBe(EcsServerGroupHeader);
   });
 
   it('reuses every other ecs component reference as-is (only the name differs)', () => {

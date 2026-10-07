@@ -18,7 +18,6 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative;
 
 import com.netflix.spinnaker.clouddriver.ecs.EcsNativeOperation;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.UpsertScalingPolicyDescription;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.UpsertScalingPolicyAtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport;
@@ -32,7 +31,7 @@ public class EcsNativeUpsertScalingPolicyAtomicOperationConverter
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new UpsertScalingPolicyAtomicOperation(convertDescription(input));
+    throw new UnsupportedOperationException("Native ECS scaling policy upsert is not supported.");
   }
 
   @Override

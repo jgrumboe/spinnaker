@@ -26,6 +26,7 @@ import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
 import com.netflix.spinnaker.clouddriver.data.task.Task;
 import com.netflix.spinnaker.clouddriver.data.task.TaskRepository;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
+import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import java.net.URI;
@@ -161,6 +162,7 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
             .serviceName(SERVICE_NAME)
             .taskDefinition(initialTaskDefArn)
             .desiredCount(1)
+            .tags(EcsNativeServiceTag.tag())
             .launchType(LaunchType.FARGATE)
             .networkConfiguration(
                 NetworkConfiguration.builder()

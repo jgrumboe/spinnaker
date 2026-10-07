@@ -23,8 +23,8 @@ import retrofit2.http.Path;
 import retrofit2.http.Query;
 
 /**
- * Client for ecs-native service-deployment status. The expected task definition pins the read to
- * the service deployment created by the preceding write operation.
+ * Client for ecs-native service-deployment status. The expected service-deployment ARN pins the
+ * read to the service deployment created by the preceding write operation.
  */
 public interface EcsNativeService {
 
@@ -33,5 +33,5 @@ public interface EcsNativeService {
       @Path("account") String account,
       @Path("region") String region,
       @Path("serverGroupName") String serverGroupName,
-      @Query("expectedTaskDefinition") String expectedTaskDefinition);
+      @Query("expectedServiceDeploymentArn") String expectedServiceDeploymentArn);
 }

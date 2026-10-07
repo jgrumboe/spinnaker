@@ -17,6 +17,7 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.netflix.spinnaker.clouddriver.ecs.TestCredential
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.StartServiceDescription
 import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.StartServiceAtomicOperation
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport
@@ -31,6 +32,20 @@ class EcsNativeStartServiceAtomicOperationConverterSpec
   @Override
   Class<StartServiceDescription> getDescriptionType() {
     StartServiceDescription
+  }
+
+  def 'rejects native start without reporting success'() {
+    given:
+    def converter = getConverter()
+    converter.accountCredentialsProvider = accountCredentialsProvider
+    accountCredentialsProvider.getCredentials(_) >> TestCredential.named('test')
+
+    when:
+    converter.convertOperation([credentials: 'test']).operate([])
+
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('START_SERVER_GROUP')
   }
 
   @Override

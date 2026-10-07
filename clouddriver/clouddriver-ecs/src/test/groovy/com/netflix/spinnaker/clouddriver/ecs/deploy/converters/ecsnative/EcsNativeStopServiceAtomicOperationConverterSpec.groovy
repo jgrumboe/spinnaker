@@ -17,6 +17,7 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.netflix.spinnaker.clouddriver.ecs.TestCredential
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.StopServiceDescription
 import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.StopServiceAtomicOperation
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport
@@ -31,6 +32,20 @@ class EcsNativeStopServiceAtomicOperationConverterSpec
   @Override
   Class<StopServiceDescription> getDescriptionType() {
     StopServiceDescription
+  }
+
+  def 'rejects native stop without reporting success'() {
+    given:
+    def converter = getConverter()
+    converter.accountCredentialsProvider = accountCredentialsProvider
+    accountCredentialsProvider.getCredentials(_) >> TestCredential.named('test')
+
+    when:
+    converter.convertOperation([credentials: 'test']).operate([])
+
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('STOP_SERVER_GROUP')
   }
 
   @Override

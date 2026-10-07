@@ -3,6 +3,7 @@ import { CloudProviderRegistry, Registry } from '@spinnaker/core';
 import { registerEcsPipelineStages } from './ecs.module';
 import { EcsSecurityGroupReader } from './securityGroup/securityGroup.reader';
 import { EcsSecurityGroupTransformer } from './securityGroup/securityGroup.transformer';
+import { EcsServerGroupHeader } from './serverGroup/EcsServerGroupHeader';
 import { EcsServerGroupCommandBuilder } from './serverGroup/configure/serverGroupCommandBuilder.service';
 import { EcsServerGroupActions } from './serverGroup/details/EcsServerGroupActions';
 import { EcsServerGroupTransformer } from './serverGroup/serverGroup.transformer';
@@ -14,6 +15,7 @@ describe('ECS package registration', () => {
     expect(CloudProviderRegistry.getValue('ecs', 'serverGroup.detailsActions').displayName).toBe(
       EcsServerGroupActions.displayName,
     );
+    expect(CloudProviderRegistry.getValue('ecs', 'serverGroups.pod.header')).toBe(EcsServerGroupHeader);
     expect(CloudProviderRegistry.getValue('ecs', 'adHocInfrastructureWritesEnabled')).toBeTrue();
     const detailsSections = CloudProviderRegistry.getValue('ecs', 'serverGroup.detailsSections');
     expect(detailsSections.length).toBe(10);

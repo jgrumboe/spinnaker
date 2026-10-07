@@ -53,9 +53,10 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
         <div style={{ color: '#666' }}>
           <p>
             <em>
-              When enabled, this deploy rolls out through ECS&apos;s own native deployment lifecycle (durable service,
-              deployment alarms, and blue/green) instead of Spinnaker&apos;s red/black orchestration. The account,
-              cluster, task definition, and networking configured elsewhere in this wizard are unchanged.
+              When enabled, this deploy rolls out through ECS&apos;s supported native ROLLING lifecycle (durable service,
+              deployment alarms, and bake time) instead of Spinnaker&apos;s red/black orchestration. Blue/Green is
+              unavailable until Orca and Deck model ECS lifecycle actions. The account, cluster, task definition, and
+              networking configured elsewhere in this wizard are unchanged.
             </em>
           </p>
         </div>
@@ -139,8 +140,13 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
                 value={strategy}
               >
                 <option value="ROLLING">Rolling</option>
-                <option value="BLUE_GREEN">Blue/Green</option>
+                <option value="BLUE_GREEN" disabled>
+                  Blue/Green (unsupported: lifecycle controls unavailable)
+                </option>
               </select>
+              <span className="help-block">
+                Blue/Green is unavailable until Orca and Deck model ECS Stop/Continue deployment lifecycle actions.
+              </span>
             </div>
           </div>
 

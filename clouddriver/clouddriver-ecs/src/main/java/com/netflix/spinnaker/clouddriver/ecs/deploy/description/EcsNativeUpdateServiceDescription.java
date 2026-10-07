@@ -38,7 +38,8 @@ import software.amazon.awssdk.services.ecs.model.ServiceRegistry;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription {
+public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription
+    implements EcsNativeDeploymentSettings {
 
   /** ECS cluster the service runs in. Resolved from the service name when omitted. */
   @Nullable String ecsClusterName;
@@ -83,13 +84,23 @@ public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription 
   @Nullable Integer maximumPercent;
 
   /** Enable the ECS deployment circuit breaker for this deployment. */
-  boolean enableDeploymentCircuitBreaker;
+  @Nullable Boolean enableDeploymentCircuitBreaker;
 
   /** When the circuit breaker is enabled, automatically roll back a failed deployment. */
-  boolean deploymentCircuitBreakerRollback;
+  @Nullable Boolean deploymentCircuitBreakerRollback;
 
   /** Force a new deployment even when the task definition is unchanged. */
   boolean forceNewDeployment;
+
+  @Override
+  public Boolean getEnableDeploymentCircuitBreaker() {
+    return enableDeploymentCircuitBreaker;
+  }
+
+  @Override
+  public Boolean getDeploymentCircuitBreakerRollback() {
+    return deploymentCircuitBreakerRollback;
+  }
 
   /**
    * Names of CloudWatch alarms ECS should watch during this deployment. See the equivalent field on
@@ -106,6 +117,6 @@ public class EcsNativeUpdateServiceDescription extends ModifyServiceDescription 
   /** Native ECS deployment strategy: {@code ROLLING} or {@code BLUE_GREEN}. */
   @Nullable String deploymentStrategy;
 
-  /** Minutes ECS waits after the new task set reaches steady state before cleanup. */
+  /** Minutes ECS waits after a supported ROLLING deployment's new tasks reach steady state. */
   @Nullable Integer bakeTimeInMinutes;
 }

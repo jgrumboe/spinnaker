@@ -18,7 +18,6 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative;
 
 import com.netflix.spinnaker.clouddriver.ecs.EcsNativeOperation;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.TerminateInstancesDescription;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.TerminateInstancesAtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport;
@@ -33,7 +32,8 @@ public class EcsNativeTerminateInstancesAtomicOperationConverter
     extends AbstractAtomicOperationsCredentialsSupport {
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new TerminateInstancesAtomicOperation(convertDescription(input));
+    throw new UnsupportedOperationException(
+        "Native ECS task termination is not supported because task ownership cannot be verified.");
   }
 
   @Override

@@ -22,10 +22,18 @@ import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CreateServerGrou
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsDefaultNamer
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName
+import com.netflix.spinnaker.clouddriver.model.ServerGroup
+import software.amazon.awssdk.services.ecs.model.CapacityProviderStrategyItem
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest
+import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration
 import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
+import software.amazon.awssdk.services.ecs.model.LoadBalancer
+import software.amazon.awssdk.services.ecs.model.NetworkConfiguration
+import software.amazon.awssdk.services.ecs.model.PlacementConstraint
+import software.amazon.awssdk.services.ecs.model.PlacementStrategy
 import software.amazon.awssdk.services.ecs.model.Service
+import software.amazon.awssdk.services.ecs.model.ServiceRegistry
 import software.amazon.awssdk.services.ecs.model.TaskDefinition
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse
@@ -44,8 +52,8 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     description.getTargetGroup() >> null
     description.getMinimumHealthyPercent() >> 50
     description.getMaximumPercent() >> 150
-    description.isEnableDeploymentCircuitBreaker() >> true
-    description.isDeploymentCircuitBreakerRollback() >> true
+    description.getEnableDeploymentCircuitBreaker() >> true
+    description.getDeploymentCircuitBreakerRollback() >> true
 
     def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
 
@@ -71,8 +79,8 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     description.getTargetGroup() >> null
     description.getMinimumHealthyPercent() >> null
     description.getMaximumPercent() >> null
-    description.isEnableDeploymentCircuitBreaker() >> false
-    description.isDeploymentCircuitBreakerRollback() >> false
+    description.getEnableDeploymentCircuitBreaker() >> false
+    description.getDeploymentCircuitBreakerRollback() >> false
 
     def operation = new EcsNativeCreateServerGroupAtomicOperation(description)
 
@@ -314,44 +322,78 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     operation.operate([])
 
     then:
-    def e = thrown(IllegalArgumentException)
-    e.message.contains('Blue/Green')
-    e.message.contains('alternateTargetGroupArn')
+    def e = thrown(UnsupportedOperationException)
+    e.message.contains('StopServiceDeployment')
     0 * ecs.updateService(_)
   }
 
-  def 'in-place blue/green update attaches the ALB traffic-shift config to the UpdateService load balancer'() {
+  def 'native blue/green lifecycle controls fail closed before UpdateService'() {
     given:
-    // The durable service already exists, so operate() rolls it in place. With a full blue/green
-    // ALB config, the UpdateServiceRequest must carry the advancedConfiguration on its load balancer
-    // -- otherwise AWS ECS rejects the deploy with a 400.
-    def serviceName = 'mygreatapp-stack1-details2'
-    def loadBalancingV2 = Mock(ElasticLoadBalancingV2Client)
-    loadBalancingV2.describeTargetGroups(_) >> DescribeTargetGroupsResponse.builder()
-        .targetGroups(TargetGroup.builder().targetGroupArn('arn:target-group').build())
-        .build()
-
     def description = new EcsNativeCreateServerGroupDescription(
         application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
         ecsClusterName: 'my-cluster',
-        deploymentStrategy: 'BLUE_GREEN',
-        targetGroup: 'my-target-group',
-        containerPort: 80,
-        availabilityZones: ['us-west-1': ['us-west-1a']],
-        alternateTargetGroupArn: 'arn:alternate-target-group',
-        productionListenerRule: 'arn:production-rule',
-        testListenerRule: 'arn:test-rule',
-        blueGreenRoleArn: 'arn:aws:iam::123456789012:role/ecsBlueGreenRole')
-
+        deploymentStrategy: 'BLUE_GREEN')
     def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
-    operation.amazonClientProvider = amazonClientProvider
+    operation.getAmazonEcsClient() >> ecs
+
+    when:
+    operation.operate([])
+
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('StopServiceDeployment')
+    0 * ecs._
+  }
+
+  def 'rejects a stored blue/green strategy when redeploy omits the strategy before any AWS write'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2'
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        ecsClusterName: 'my-cluster')
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder()
+            .serviceName(serviceName)
+            .status('ACTIVE')
+            .tags(EcsNativeServiceTag.tag())
+            .deploymentConfiguration(DeploymentConfiguration.builder().strategy('BLUE_GREEN').build())
+            .build())
+        .build()
+
+    when:
+    operation.operate([])
+
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('StopServiceDeployment')
+    0 * operation.registerTaskDefinition(_, _, _)
+    0 * ecs.updateService(_)
+    0 * ecs.createService(_)
+  }
+
+  def 'explicitly disables ECS Exec on an existing enabled service'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2'
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        ecsClusterName: 'my-cluster',
+        account: 'test',
+        enableExecuteCommand: false,
+        availabilityZones: ['us-west-1': ['us-west-1a']])
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
     operation.getAmazonEcsClient() >> ecs
     operation.getCredentials() >> Mock(AmazonCredentials)
     operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
     operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
-    amazonClientProvider.getElasticLoadBalancingV2Client(_, _) >> loadBalancingV2
     ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
-        .services(Service.builder().serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag()).build())
+        .services(Service.builder()
+            .serviceName(serviceName)
+            .status('ACTIVE')
+            .tags(EcsNativeServiceTag.tag())
+            .enableExecuteCommand(true)
+            .build())
         .build()
 
     when:
@@ -359,13 +401,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
 
     then:
     1 * ecs.updateService({ UpdateServiceRequest req ->
-      req.service() == serviceName &&
-          req.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN' &&
-          req.loadBalancers().size() == 1 &&
-          req.loadBalancers().get(0).advancedConfiguration().alternateTargetGroupArn() == 'arn:alternate-target-group' &&
-          req.loadBalancers().get(0).advancedConfiguration().productionListenerRule() == 'arn:production-rule' &&
-          req.loadBalancers().get(0).advancedConfiguration().testListenerRule() == 'arn:test-rule' &&
-          req.loadBalancers().get(0).advancedConfiguration().roleArn() == 'arn:aws:iam::123456789012:role/ecsBlueGreenRole'
+      req.enableExecuteCommand() == false
     } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
         .service(Service.builder().serviceName(serviceName).build())
         .build()
@@ -508,4 +544,86 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     0 * ecs.createService(_)
     result.serverGroupNameByRegion == ['us-west-1': serviceName]
   }
+
+  def 'fails closed before making AWS calls for unsupported blue/green lifecycle controls'() {
+    given:
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        deploymentStrategy: 'BLUE_GREEN')
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
+
+    when:
+    operation.operate([])
+
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('StopServiceDeployment')
+    0 * ecs._
+  }
+
+  def 'preserves existing service shape on a sparse in-place redeploy'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2'
+    def existingNetwork = NetworkConfiguration.builder().build()
+    def existingRegistries = [ServiceRegistry.builder().registryArn('arn:registry').build()]
+    def existingConstraints = [PlacementConstraint.builder().type('distinctInstance').build()]
+    def existingStrategy = [PlacementStrategy.builder().type('spread').field('instanceId').build()]
+    def existingCapacityProviders = [CapacityProviderStrategyItem.builder().capacityProvider('FARGATE').weight(1).build()]
+    def existingLoadBalancers = [LoadBalancer.builder().targetGroupArn('arn:target-group').containerName('app').containerPort(8080).build()]
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        account: 'test',
+        ecsClusterName: 'my-cluster',
+        availabilityZones: ['us-west-1': ['us-west-1a']],
+        capacity: new ServerGroup.Capacity(1, 2, 3))
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    def updateRequest
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    operation.registerAutoScalingGroup(_, _, _) >> 'service/my-cluster/mygreatapp-stack1-details2'
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder()
+            .serviceName(serviceName)
+            .status('ACTIVE')
+            .tags(EcsNativeServiceTag.tag())
+            .desiredCount(7)
+            .networkConfiguration(existingNetwork)
+            .serviceRegistries(existingRegistries)
+            .placementConstraints(existingConstraints)
+            .placementStrategy(existingStrategy)
+            .capacityProviderStrategy(existingCapacityProviders)
+            .platformVersion('1.4.0')
+            .healthCheckGracePeriodSeconds(60)
+            .enableExecuteCommand(true)
+            .loadBalancers(existingLoadBalancers)
+            .build())
+        .build()
+    ecs.updateService(_ as UpdateServiceRequest) >> { UpdateServiceRequest request ->
+      updateRequest = request
+      UpdateServiceResponse.builder()
+          .service(Service.builder().serviceName(serviceName).taskDefinition('new-task-def-arn').build())
+          .build()
+    }
+
+    when:
+    operation.operate([])
+
+    then:
+    updateRequest.service() == serviceName
+    updateRequest.desiredCount() != null
+    updateRequest.desiredCount() == 3
+    updateRequest.networkConfiguration() == existingNetwork
+    updateRequest.serviceRegistries() == existingRegistries
+    updateRequest.placementConstraints() == existingConstraints
+    updateRequest.placementStrategy() == existingStrategy
+    updateRequest.capacityProviderStrategy() == existingCapacityProviders
+    updateRequest.platformVersion() == '1.4.0'
+    updateRequest.healthCheckGracePeriodSeconds() == 60
+    updateRequest.enableExecuteCommand() == true
+    updateRequest.loadBalancers() == existingLoadBalancers
+  }
+
 }

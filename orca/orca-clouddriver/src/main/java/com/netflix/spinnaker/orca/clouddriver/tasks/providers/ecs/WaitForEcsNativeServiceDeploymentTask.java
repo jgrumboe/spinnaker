@@ -40,7 +40,8 @@ import org.springframework.stereotype.Component;
 public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeoutRetryableTask {
 
   public static final String TASK_NAME = "waitForEcsNativeServiceDeployment";
-  public static final String EXPECTED_TASK_DEFINITION = "ecsNativeExpectedTaskDefinition";
+  public static final String EXPECTED_SERVICE_DEPLOYMENT_ARN =
+      "ecsNativeExpectedServiceDeploymentArn";
 
   private static final long BACKOFF_PERIOD = TimeUnit.SECONDS.toMillis(10);
   private static final long TIMEOUT = TimeUnit.HOURS.toMillis(1);
@@ -69,7 +70,7 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
     }
     String region = resolveRegion(context);
     String serverGroupName = resolveServerGroupName(context, region);
-    String expectedTaskDefinition = resolveExpectedTaskDefinition(context);
+    String expectedServiceDeploymentArn = resolveExpectedServiceDeploymentArn(context);
 
     if (account == null || region == null || serverGroupName == null) {
       throw new IllegalArgumentException(
@@ -77,17 +78,17 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
               + "(either directly in the stage context, or via a preceding deploy stage's "
               + "deploy.server.groups output)");
     }
-    if (expectedTaskDefinition == null || expectedTaskDefinition.isBlank()) {
+    if (expectedServiceDeploymentArn == null || expectedServiceDeploymentArn.isBlank()) {
       throw new IllegalArgumentException(
-          "waitForEcsNativeServiceDeployment requires ecsNativeExpectedTaskDefinition; "
-              + "deployment status cannot safely select an unpinned PRIMARY deployment");
+          "waitForEcsNativeServiceDeployment requires ecsNativeExpectedServiceDeploymentArn; "
+              + "deployment status cannot safely select an unpinned service deployment");
     }
 
     try {
       EcsServiceDeploymentStatus status =
           Retrofit2SyncCall.execute(
               ecsNativeService.getServiceDeploymentStatus(
-                  account, region, serverGroupName, expectedTaskDefinition));
+                  account, region, serverGroupName, expectedServiceDeploymentArn));
 
       String serviceDeploymentStatus =
           status.getStatus() != null ? status.getStatus() : status.getRolloutState();
@@ -101,13 +102,11 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
               ? status.getStatusReason()
               : status.getRolloutStateReason());
 
-      if (status.getTargetTaskDefinition() != null
-          && !expectedTaskDefinition.equals(status.getTargetTaskDefinition())) {
+      if (!expectedServiceDeploymentArn.equals(status.getServiceDeploymentArn())) {
         log.warn(
-            "ecs-native service deployment {} targets {}, expected {}; treating as terminal",
+            "ecs-native service deployment response identified {}, expected {}; treating as terminal",
             status.getServiceDeploymentArn(),
-            status.getTargetTaskDefinition(),
-            expectedTaskDefinition);
+            expectedServiceDeploymentArn);
         return TaskResult.builder(ExecutionStatus.TERMINAL)
             .context("ecsNativeDeploymentStatus", status)
             .build();
@@ -138,9 +137,9 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
     }
   }
 
-  private static String resolveExpectedTaskDefinition(Map<String, Object> context) {
-    String expected = (String) context.get(EXPECTED_TASK_DEFINITION);
-    return expected != null ? expected : (String) context.get("expectedTaskDefinition");
+  private static String resolveExpectedServiceDeploymentArn(Map<String, Object> context) {
+    String expected = (String) context.get(EXPECTED_SERVICE_DEPLOYMENT_ARN);
+    return expected != null ? expected : (String) context.get("expectedServiceDeploymentArn");
   }
 
   private static String resolveRegion(Map<String, Object> context) {

@@ -32,7 +32,7 @@ public class EcsNativeResizeServiceAtomicOperationConverter
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new ResizeServiceAtomicOperation(convertDescription(input));
+    return new ResizeServiceAtomicOperation(convertDescription(input), true);
   }
 
   @Override

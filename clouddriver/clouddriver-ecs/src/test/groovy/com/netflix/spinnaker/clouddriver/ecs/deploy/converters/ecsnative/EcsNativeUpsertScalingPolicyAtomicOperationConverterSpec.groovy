@@ -16,25 +16,15 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.netflix.spinnaker.clouddriver.ecs.deploy.description.UpsertScalingPolicyDescription
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.UpsertScalingPolicyAtomicOperation
-import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport
+import spock.lang.Specification
 
-class EcsNativeUpsertScalingPolicyAtomicOperationConverterSpec extends EcsNativeCredentialsOnlyAtomicOperationConverterSpec<
-    UpsertScalingPolicyDescription, UpsertScalingPolicyAtomicOperation> {
-  @Override
-  AbstractAtomicOperationsCredentialsSupport getConverter() {
-    new EcsNativeUpsertScalingPolicyAtomicOperationConverter(objectMapper: new ObjectMapper())
-  }
+class EcsNativeUpsertScalingPolicyAtomicOperationConverterSpec extends Specification {
+  def 'should reject native scaling policy upsert'() {
+    when:
+    new EcsNativeUpsertScalingPolicyAtomicOperationConverter().convertOperation([:])
 
-  @Override
-  Class<UpsertScalingPolicyDescription> getDescriptionType() {
-    UpsertScalingPolicyDescription
-  }
-
-  @Override
-  Class<UpsertScalingPolicyAtomicOperation> getOperationType() {
-    UpsertScalingPolicyAtomicOperation
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message == 'Native ECS scaling policy upsert is not supported.'
   }
 }

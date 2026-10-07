@@ -18,7 +18,6 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative;
 
 import com.netflix.spinnaker.clouddriver.ecs.EcsNativeOperation;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CloneServiceDescription;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.CloneServiceAtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport;
@@ -32,7 +31,9 @@ public class EcsNativeCloneServiceAtomicOperationConverter
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new CloneServiceAtomicOperation(convertDescription(input));
+    throw new UnsupportedOperationException(
+        "ecs-native cloneServerGroup is unsupported: cloning has no safe durable-service deployment "
+            + "path; use a createServerGroup stage to deploy the desired task definition.");
   }
 
   @Override

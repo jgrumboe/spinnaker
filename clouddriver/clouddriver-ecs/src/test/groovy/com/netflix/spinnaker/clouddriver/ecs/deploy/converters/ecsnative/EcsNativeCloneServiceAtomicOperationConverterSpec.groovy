@@ -18,23 +18,31 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.CloneServiceDescription
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.CloneServiceAtomicOperation
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport
+import com.netflix.spinnaker.clouddriver.security.AccountCredentialsProvider
+import com.netflix.spinnaker.clouddriver.ecs.TestCredential
+import spock.lang.Specification
 
-class EcsNativeCloneServiceAtomicOperationConverterSpec
-    extends EcsNativeCredentialsOnlyAtomicOperationConverterSpec<CloneServiceDescription, CloneServiceAtomicOperation> {
-  @Override
-  AbstractAtomicOperationsCredentialsSupport getConverter() {
-    new EcsNativeCloneServiceAtomicOperationConverter(objectMapper: new ObjectMapper())
-  }
+class EcsNativeCloneServiceAtomicOperationConverterSpec extends Specification {
+  def accountCredentialsProvider = Mock(AccountCredentialsProvider)
+  def converter = new EcsNativeCloneServiceAtomicOperationConverter(
+    objectMapper: new ObjectMapper(),
+    accountCredentialsProvider: accountCredentialsProvider
+  )
 
-  @Override
-  Class<CloneServiceDescription> getDescriptionType() {
-    CloneServiceDescription
-  }
+  def 'converts the clone description but rejects native clone operation conversion'() {
+    given:
+    def input = [credentials: 'test']
+    accountCredentialsProvider.getCredentials(_) >> TestCredential.named('test')
 
-  @Override
-  Class<CloneServiceAtomicOperation> getOperationType() {
-    CloneServiceAtomicOperation
+    expect:
+    converter.convertDescription(input) instanceof CloneServiceDescription
+
+    when:
+    converter.convertOperation(input)
+
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message.contains('no safe durable-service deployment path')
   }
 }

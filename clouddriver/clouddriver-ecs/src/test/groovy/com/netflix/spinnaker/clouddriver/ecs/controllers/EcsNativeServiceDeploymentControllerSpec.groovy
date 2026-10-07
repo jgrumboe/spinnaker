@@ -61,7 +61,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
     credentialsRepository.getOne('test') >> null
 
     when:
-    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'task-def-arn')
+    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'arn:aws:ecs:us-west-2:123:service-deployment/myapp/1')
 
     then:
     response.statusCode == HttpStatus.BAD_REQUEST
@@ -71,11 +71,11 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
     given:
     credentialsRepository.getOne('FGATE-PS-PRODUCTION') >> null
     credentialsRepository.getAll() >> [Mock(NetflixECSCredentials) { getName() >> 'fgate-ps-production' }]
-    serviceCacheClient.getAll('fgate-ps-production', 'eu-central-1') >> []
+    serviceCacheClient.get(_) >> null
 
     when:
     def response = controller.getDeploymentStatus(
-      'FGATE-PS-PRODUCTION', 'eu-central-1', 'myapp', 'task-def-arn')
+      'FGATE-PS-PRODUCTION', 'eu-central-1', 'myapp', 'arn:aws:ecs:us-west-2:123:service-deployment/myapp/1')
 
     then:
     response.statusCode == HttpStatus.NOT_FOUND
@@ -84,24 +84,25 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
   def 'returns 404 when the service is not in the cache'() {
     given:
     credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
-    serviceCacheClient.getAll('test', 'us-west-2') >> []
+    serviceCacheClient.get(_) >> null
 
     when:
-    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'task-def-arn')
+    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'arn:aws:ecs:us-west-2:123:service-deployment/myapp/1')
 
     then:
     response.statusCode == HttpStatus.NOT_FOUND
+    0 * credentialsRepository.getAll()
   }
 
   def 'returns 404 when ECS has no service deployments for the service'() {
     given:
     credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
-    serviceCacheClient.getAll('test', 'us-west-2') >> [new Service(serviceName: 'myapp', clusterArn: 'cluster-arn')]
+    serviceCacheClient.get(_) >> new Service(serviceName: 'myapp', clusterArn: 'cluster-arn')
     amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
     ecs.listServiceDeployments(_) >> ListServiceDeploymentsResponse.builder().build()
 
     when:
-    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'task-def-arn')
+    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'arn:aws:ecs:us-west-2:123:service-deployment/myapp/1')
 
     then:
     response.statusCode == HttpStatus.NOT_FOUND
@@ -110,7 +111,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
   def 'maps the matching service deployment lifecycle state onto the response'() {
     given:
     credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
-    serviceCacheClient.getAll('test', 'us-west-2') >> [new Service(serviceName: 'myapp', clusterArn: 'cluster-arn')]
+    serviceCacheClient.get(_) >> new Service(serviceName: 'myapp', clusterArn: 'cluster-arn')
     amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
 
     def deploymentArn = 'arn:aws:ecs:us-west-2:123:service-deployment/myapp/1'
@@ -144,7 +145,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
       .build()
 
     when:
-    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'task-def-arn')
+    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'arn:aws:ecs:us-west-2:123:service-deployment/myapp/1')
 
     then:
     response.statusCode == HttpStatus.OK
@@ -161,10 +162,10 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
     }
   }
 
-  def 'does not return a rollback deployment for a different task definition'() {
+  def 'does not return a different service deployment identity'() {
     given:
     credentialsRepository.getOne('test') >> Mock(NetflixECSCredentials) { getName() >> 'test' }
-    serviceCacheClient.getAll('test', 'us-west-2') >> [new Service(serviceName: 'myapp', clusterArn: 'cluster-arn')]
+    serviceCacheClient.get(_) >> new Service(serviceName: 'myapp', clusterArn: 'cluster-arn')
     amazonClientProvider.getAmazonEcsV2(_, 'us-west-2') >> ecs
     def deploymentArn = 'arn:aws:ecs:us-west-2:123:service-deployment/myapp/rollback'
     def revisionArn = 'arn:aws:ecs:us-west-2:123:service-revision/myapp/rollback'
@@ -191,7 +192,7 @@ class EcsNativeServiceDeploymentControllerSpec extends Specification {
       .build()
 
     when:
-    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'new-task-def')
+    def response = controller.getDeploymentStatus('test', 'us-west-2', 'myapp', 'new-service-deployment-arn')
 
     then:
     response.statusCode == HttpStatus.NOT_FOUND

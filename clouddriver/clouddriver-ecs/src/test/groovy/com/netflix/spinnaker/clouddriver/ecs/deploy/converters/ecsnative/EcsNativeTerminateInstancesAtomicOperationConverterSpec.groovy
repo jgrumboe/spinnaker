@@ -16,36 +16,17 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative
 
-import com.netflix.spinnaker.clouddriver.ecs.TestCredential
-import com.netflix.spinnaker.clouddriver.ecs.deploy.description.TerminateInstancesDescription
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.TerminateInstancesAtomicOperation
-import com.netflix.spinnaker.clouddriver.security.AccountCredentialsProvider
 import spock.lang.Specification
 
 class EcsNativeTerminateInstancesAtomicOperationConverterSpec extends Specification {
-  def accountCredentialsProvider = Mock(AccountCredentialsProvider)
-
-  def 'should convert'() {
-    given:
-    def converter = new EcsNativeTerminateInstancesAtomicOperationConverter()
-    converter.accountCredentialsProvider = accountCredentialsProvider
-
-    def instanceIds = ['id-1', 'id-2']
-    def input = [instanceIds: instanceIds, region: 'us-west-1', credentials: 'test']
-
-    accountCredentialsProvider.getCredentials(_) >> TestCredential.named('test')
-
+  def 'should reject native task termination'() {
     when:
-    def description = converter.convertDescription(input)
+    new EcsNativeTerminateInstancesAtomicOperationConverter().convertOperation([
+        instanceIds: ['id-1'], region: 'us-west-1', credentials: 'test'])
 
     then:
-    description instanceof TerminateInstancesDescription
-    description.getEcsTaskIds() == instanceIds
-
-    when:
-    def operation = converter.convertOperation(input)
-
-    then:
-    operation instanceof TerminateInstancesAtomicOperation
+    def exception = thrown(UnsupportedOperationException)
+    exception.message ==
+        'Native ECS task termination is not supported because task ownership cannot be verified.'
   }
 }

@@ -16,25 +16,15 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.netflix.spinnaker.clouddriver.ecs.deploy.description.DeleteScalingPolicyDescription
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.DeleteScalingPolicyAtomicOperation
-import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport
+import spock.lang.Specification
 
-class EcsNativeDeleteScalingPolicyAtomicOperationConverterSpec extends EcsNativeCredentialsOnlyAtomicOperationConverterSpec<
-    DeleteScalingPolicyDescription, DeleteScalingPolicyAtomicOperation> {
-  @Override
-  AbstractAtomicOperationsCredentialsSupport getConverter() {
-    new EcsNativeDeleteScalingPolicyAtomicOperationConverter(objectMapper: new ObjectMapper())
-  }
+class EcsNativeDeleteScalingPolicyAtomicOperationConverterSpec extends Specification {
+  def 'should reject native scaling policy deletion'() {
+    when:
+    new EcsNativeDeleteScalingPolicyAtomicOperationConverter().convertOperation([:])
 
-  @Override
-  Class<DeleteScalingPolicyDescription> getDescriptionType() {
-    DeleteScalingPolicyDescription
-  }
-
-  @Override
-  Class<DeleteScalingPolicyAtomicOperation> getOperationType() {
-    DeleteScalingPolicyAtomicOperation
+    then:
+    def exception = thrown(UnsupportedOperationException)
+    exception.message == 'Native ECS scaling policy deletion is not supported.'
   }
 }

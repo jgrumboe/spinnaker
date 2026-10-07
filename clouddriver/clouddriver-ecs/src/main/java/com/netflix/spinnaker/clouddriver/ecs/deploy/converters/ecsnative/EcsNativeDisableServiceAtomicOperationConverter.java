@@ -32,7 +32,7 @@ public class EcsNativeDisableServiceAtomicOperationConverter
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new DisableServiceAtomicOperation(convertDescription(input));
+    return new DisableServiceAtomicOperation(convertDescription(input), true);
   }
 
   @Override

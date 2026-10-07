@@ -63,4 +63,34 @@ class EcsNativeDescriptionValidationTest {
               .anyMatch(error -> "minimumHealthyPercent".equals(error.getField())));
     }
   }
+
+  @Test
+  void nativeCreateRejectsUnsupportedBlueGreenLifecycle() {
+    try (AnnotationConfigApplicationContext applicationContext =
+        new AnnotationConfigApplicationContext()) {
+      applicationContext.registerBean(EcsCreateServerGroupDescriptionValidator.class);
+      applicationContext.refresh();
+
+      AnnotationsBasedAtomicOperationsRegistry registry =
+          new AnnotationsBasedAtomicOperationsRegistry();
+      ReflectionTestUtils.setField(registry, "applicationContext", applicationContext);
+      ReflectionTestUtils.setField(
+          registry, "cloudProviders", Collections.singletonList(new EcsNativeCloudProvider()));
+
+      String validatorName =
+          DescriptionValidator.getValidatorName(AtomicOperations.CREATE_SERVER_GROUP);
+      DescriptionValidator validator =
+          registry.getAtomicOperationDescriptionValidator(validatorName, EcsNativeCloudProvider.ID);
+      EcsNativeCreateServerGroupDescription description =
+          new EcsNativeCreateServerGroupDescription();
+      description.setDeploymentStrategy("BLUE_GREEN");
+      DescriptionValidationErrors errors = new DescriptionValidationErrors(description);
+
+      validator.validate(Collections.emptyList(), description, errors);
+
+      assertTrue(
+          errors.getFieldErrors().stream()
+              .anyMatch(error -> "deploymentStrategy".equals(error.getField())));
+    }
+  }
 }

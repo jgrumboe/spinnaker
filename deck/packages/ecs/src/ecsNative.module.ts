@@ -1,31 +1,29 @@
 import { CloudProviderRegistry, DeploymentStrategyRegistry, SETTINGS } from '@spinnaker/core';
 
-// Ensures the 'ecs' provider (and its underlying components) is registered first, regardless
-// of import order elsewhere -- ecs-native reuses that registration wholesale below.
+// Register the shared ECS components before copying the provider configuration. The native
+// identity reuses those component references for resource reads and details views.
 import './ecs.module';
 import { IECSProviderSettings } from './ecs.settings';
 import ecsNativeLogo from './logo/ecs.logo.svg';
+import { registerEcsServerGroupHeader } from './serverGroup/EcsServerGroupHeader';
 
 const ECS_NATIVE = 'ecs-native';
 
 /**
- * Registers 'ecs-native' as a second, Deck-visible identity for the same ECS accounts as 'ecs'.
+ * Registers `ecs-native` as a Deck-visible identity backed by the existing `ecs` provider
+ * components.
  *
- * There is no distinct 'ecs-native'-typed account anywhere -- clouddriver reuses the exact same
- * ECS accounts/credentials/caching for both, and only the operation-routing `cloudProvider` field
- * on a create/clone server-group command differs (toggled via the "Use native ECS deployment"
- * checkbox on the Native ECS Deployment wizard page, see EcsServerGroupTransformer). Because no
- * account is typed 'ecs-native', it is never offered by Deck's account-driven provider pickers
- * (the pipeline "Add stage" provider dropdown, ProviderSelectionService's "add new cluster" flow)
- * -- those still only ever see 'ecs'. This registration exists purely so that VIEWING an existing
- * ecs-native server group (details pane, action buttons, load balancer/security group/instance
- * views) resolves correctly: those all look up CloudProviderRegistry by the resource's own
- * `cloudProviderId`, which the backend's ecs-native read-path delegates already report as
- * 'ecs-native'.
+ * Accounts remain typed `ecs`, so account-driven provider pickers continue to expose `ecs` rather
+ * than inventing a second credential type. The `ecs-native` identity is used for provider-scoped
+ * stage lookups and exact native delegates; it is not the backend identity stamped onto returned
+ * server groups. Backend native resources carry `cloudProvider: "ecs"` and use `isNative` for
+ * durable ownership, while exact native delegates keep provider-scoped lookups from falling back
+ * to classic resources. Aggregate ECS listings stay owned by `ecs`, preventing every service from
+ * appearing twice.
  *
- * Reuses every 'ecs' component reference as-is (cloneDeep only copies plain data, not the
- * function/class references), so there is nothing ecs-native-specific to keep in sync here beyond
- * the display name/logo.
+ * The native registration reuses each `ecs` component reference; only the display name and logo
+ * differ. Deploy/clone behavior is selected by the stage's `cloudProvider` and is not inferred
+ * from an account.
  */
 export function registerEcsNativeProvider(): void {
   SETTINGS.providers[ECS_NATIVE] = SETTINGS.providers[ECS_NATIVE] || IECSProviderSettings;
@@ -43,6 +41,7 @@ export function registerEcsNativeProvider(): void {
 }
 
 registerEcsNativeProvider();
+registerEcsServerGroupHeader(ECS_NATIVE);
 
 // The native ECS deployment strategy (rolling/blue-green, configured on the Native ECS Deployment
 // wizard page) supersedes Spinnaker's own deployment strategies for this provider identity.

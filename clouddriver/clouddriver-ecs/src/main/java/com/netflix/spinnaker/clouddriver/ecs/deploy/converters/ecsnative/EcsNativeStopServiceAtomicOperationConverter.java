@@ -18,7 +18,7 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.converters.ecsnative;
 
 import com.netflix.spinnaker.clouddriver.ecs.EcsNativeOperation;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.StopServiceDescription;
-import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.StopServiceAtomicOperation;
+import com.netflix.spinnaker.clouddriver.ecs.deploy.ops.EcsNativeStopServiceAtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperations;
 import com.netflix.spinnaker.clouddriver.security.AbstractAtomicOperationsCredentialsSupport;
@@ -32,7 +32,7 @@ public class EcsNativeStopServiceAtomicOperationConverter
 
   @Override
   public AtomicOperation convertOperation(Map input) {
-    return new StopServiceAtomicOperation(convertDescription(input));
+    return new EcsNativeStopServiceAtomicOperation(convertDescription(input));
   }
 
   @Override

@@ -26,10 +26,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.services.ecs.EcsClient;
-import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
-import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
-import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
 import software.amazon.awssdk.services.ecs.model.Service;
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
 
@@ -45,11 +42,14 @@ public class EcsNativeUpdateServiceAtomicOperation
     implements AtomicOperation<DeploymentResult> {
 
   public EcsNativeUpdateServiceAtomicOperation(EcsNativeUpdateServiceDescription description) {
-    super(description, "UPDATE_ECS_SERVER_GROUP");
+    super(description, "UPDATE_ECS_SERVER_GROUP", true);
   }
 
   @Override
   public DeploymentResult operate(List priorOutputs) {
+    // Preserve the fail-fast behavior for an explicitly requested unsupported strategy. When the
+    // strategy is omitted, the ownership lookup below is required to validate the stored strategy.
+    EcsNativeDeploymentConfiguration.validateLifecycleSupport(description);
     updateTaskStatus("Initializing Update ECS Server Group (native) Operation...");
 
     EcsClient ecs = getAmazonEcsClient();
@@ -61,23 +61,9 @@ public class EcsNativeUpdateServiceAtomicOperation
           containerInformationService.getClusterName(
               serviceName, description.getAccount(), description.getRegion());
     }
-
-    DeploymentConfiguration existingConfiguration = null;
-    if (hasDeploymentConfiguration()) {
-      Service existingService =
-          ecs
-              .describeServices(
-                  DescribeServicesRequest.builder().cluster(cluster).services(serviceName).build())
-              .services()
-              .stream()
-              .findFirst()
-              .orElse(null);
-      if (existingService == null) {
-        throw new IllegalStateException(
-            String.format("ECS service %s was not found in cluster %s.", serviceName, cluster));
-      }
-      existingConfiguration = existingService.deploymentConfiguration();
-    }
+    Service existingService = requireNativeServiceOwnership(cluster, serviceName);
+    DeploymentConfiguration existingConfiguration = existingService.deploymentConfiguration();
+    EcsNativeDeploymentConfiguration.validateLifecycleSupport(description, existingConfiguration);
 
     UpdateServiceRequest.Builder requestBuilder =
         UpdateServiceRequest.builder().cluster(cluster).service(serviceName);
@@ -149,86 +135,18 @@ public class EcsNativeUpdateServiceAtomicOperation
       deployment.setLocation(description.getRegion());
       deployment.setServerGroupName(resolvedServiceName);
       deployment.getMetadata().put("ecsNativeExpectedTaskDefinition", service.taskDefinition());
+      if (StringUtils.isNotBlank(service.currentServiceDeployment())) {
+        deployment
+            .getMetadata()
+            .put("ecsNativeExpectedServiceDeploymentArn", service.currentServiceDeployment());
+      }
       result.setDeployments(Collections.singleton(deployment));
     }
     return result;
   }
 
-  private boolean hasDeploymentConfiguration() {
-    return description.getMinimumHealthyPercent() != null
-        || description.getMaximumPercent() != null
-        || description.isEnableDeploymentCircuitBreaker()
-        || description.isDeploymentCircuitBreakerRollback()
-        || (description.getAlarmNames() != null && !description.getAlarmNames().isEmpty())
-        || description.isEnableDeploymentAlarms()
-        || StringUtils.isNotBlank(description.getDeploymentStrategy())
-        || description.getBakeTimeInMinutes() != null;
-  }
-
-  /**
-   * Builds a {@link DeploymentConfiguration} only when the description actually specifies one, so
-   * an update that only changes the task definition does not overwrite the service's existing
-   * rolling bounds.
-   */
   private DeploymentConfiguration buildDeploymentConfiguration(
       DeploymentConfiguration existingConfiguration) {
-    DeploymentAlarms alarms = buildDeploymentAlarms();
-    boolean hasConfig =
-        description.getMinimumHealthyPercent() != null
-            || description.getMaximumPercent() != null
-            || description.isEnableDeploymentCircuitBreaker()
-            || description.isDeploymentCircuitBreakerRollback()
-            || alarms != null
-            || StringUtils.isNotBlank(description.getDeploymentStrategy())
-            || description.getBakeTimeInMinutes() != null;
-    if (!hasConfig) {
-      return null;
-    }
-
-    DeploymentConfiguration.Builder builder =
-        existingConfiguration == null
-            ? DeploymentConfiguration.builder()
-            : existingConfiguration.toBuilder();
-    if (description.getMinimumHealthyPercent() != null) {
-      builder.minimumHealthyPercent(description.getMinimumHealthyPercent());
-    }
-    if (description.getMaximumPercent() != null) {
-      builder.maximumPercent(description.getMaximumPercent());
-    }
-    if (description.isEnableDeploymentCircuitBreaker()
-        || description.isDeploymentCircuitBreakerRollback()) {
-      builder.deploymentCircuitBreaker(
-          DeploymentCircuitBreaker.builder()
-              .enable(description.isEnableDeploymentCircuitBreaker())
-              .rollback(description.isDeploymentCircuitBreakerRollback())
-              .build());
-    }
-    if (alarms != null) {
-      builder.alarms(alarms);
-    }
-    if (StringUtils.isNotBlank(description.getDeploymentStrategy())) {
-      builder.strategy(description.getDeploymentStrategy());
-    }
-    if (description.getBakeTimeInMinutes() != null) {
-      builder.bakeTimeInMinutes(description.getBakeTimeInMinutes());
-    }
-    return builder.build();
-  }
-
-  /**
-   * Builds a {@link DeploymentAlarms} only when the description actually names alarms or opts in,
-   * so an update that doesn't use them doesn't send an empty/disabled alarms block.
-   */
-  private DeploymentAlarms buildDeploymentAlarms() {
-    boolean hasAlarmNames =
-        description.getAlarmNames() != null && !description.getAlarmNames().isEmpty();
-    if (!hasAlarmNames && !description.isEnableDeploymentAlarms()) {
-      return null;
-    }
-    return DeploymentAlarms.builder()
-        .alarmNames(description.getAlarmNames())
-        .enable(true)
-        .rollback(description.isDeploymentAlarmsRollback())
-        .build();
+    return EcsNativeDeploymentConfiguration.forUpdate(description, existingConfiguration);
   }
 }

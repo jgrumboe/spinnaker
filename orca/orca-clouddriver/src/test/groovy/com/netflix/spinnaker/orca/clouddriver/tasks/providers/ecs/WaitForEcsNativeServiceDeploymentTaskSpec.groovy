@@ -45,7 +45,7 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
       account: 'test',
       region: 'us-west-2',
       serverGroupName: 'myapp',
-      ecsNativeExpectedTaskDefinition: 'task-def-arn'
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1'
     ])
     def status = new EcsServiceDeploymentStatus(
       serviceDeploymentArn: 'service-deployment-1',
@@ -59,7 +59,7 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
 
     then:
     1 * ecsNativeService.getServiceDeploymentStatus(
-      'test', 'us-west-2', 'myapp', 'task-def-arn') >> Calls.response(status)
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
     result.status == expectedStatus
     result.context.ecsNativeDeploymentStatus == status
 
@@ -80,7 +80,7 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
       account: 'test',
       region: 'us-west-2',
       serverGroupName: 'myapp',
-      ecsNativeExpectedTaskDefinition: 'task-def-1'
+      ecsNativeExpectedServiceDeploymentArn: 'deployment-1'
     ])
     def inProgress = new EcsServiceDeploymentStatus(
       serviceDeploymentArn: 'deployment-1',
@@ -99,7 +99,7 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
 
     then:
     2 * ecsNativeService.getServiceDeploymentStatus(
-      'test', 'us-west-2', 'myapp', 'task-def-1') >>> [Calls.response(inProgress), Calls.response(rollbackDeployment)]
+      'test', 'us-west-2', 'myapp', 'deployment-1') >>> [Calls.response(inProgress), Calls.response(rollbackDeployment)]
     first.status == ExecutionStatus.RUNNING
     second.status == ExecutionStatus.TERMINAL
   }
@@ -108,17 +108,19 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
     given:
     def stage = stageWithContext([
       account: 'test',
-      ecsNativeExpectedTaskDefinition: 'task-def-arn',
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
       'deploy.server.groups': ['us-west-2': ['myapp']]
     ])
-    def status = new EcsServiceDeploymentStatus(status: 'IN_PROGRESS')
+    def status = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1',
+      status: 'IN_PROGRESS')
 
     when:
     def result = task.execute(stage)
 
     then:
     1 * ecsNativeService.getServiceDeploymentStatus(
-      'test', 'us-west-2', 'myapp', 'task-def-arn') >> Calls.response(status)
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
     result.status == ExecutionStatus.RUNNING
   }
 
@@ -128,16 +130,18 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
       credentials: 'test',
       region: 'eu-central-1',
       serverGroupName: 'myapp',
-      ecsNativeExpectedTaskDefinition: 'task-def-arn'
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1'
     ])
-    def status = new EcsServiceDeploymentStatus(status: 'SUCCESSFUL')
+    def status = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1',
+      status: 'SUCCESSFUL')
 
     when:
     def result = task.execute(stage)
 
     then:
     1 * ecsNativeService.getServiceDeploymentStatus(
-      'test', 'eu-central-1', 'myapp', 'task-def-arn') >> Calls.response(status)
+      'test', 'eu-central-1', 'myapp', 'service-deployment-1') >> Calls.response(status)
     result.status == ExecutionStatus.SUCCEEDED
   }
 

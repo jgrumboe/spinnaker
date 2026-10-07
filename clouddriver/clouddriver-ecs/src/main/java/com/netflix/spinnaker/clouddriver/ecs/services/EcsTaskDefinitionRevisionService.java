@@ -25,12 +25,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.ecs.EcsClient;
-import software.amazon.awssdk.services.ecs.model.ContainerDefinition;
-import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionRequest;
 import software.amazon.awssdk.services.ecs.model.ListTaskDefinitionsRequest;
 import software.amazon.awssdk.services.ecs.model.ListTaskDefinitionsResponse;
 import software.amazon.awssdk.services.ecs.model.SortOrder;
-import software.amazon.awssdk.services.ecs.model.TaskDefinition;
 import software.amazon.awssdk.services.ecs.model.TaskDefinitionStatus;
 
 /**
@@ -38,20 +35,18 @@ import software.amazon.awssdk.services.ecs.model.TaskDefinitionStatus;
  * newest first, to back the Deck rollback picker (roll a durable service back to an earlier
  * revision of the same family).
  *
- * <p>This is a live call ({@code ListTaskDefinitions} + {@code DescribeTaskDefinition}), not
- * cache-backed: the task-definition cache only ever holds revisions currently referenced by a live
- * service and is authoritatively pruned, so it cannot enumerate a family's history. The result is
- * attached to the {@code ecs-native} server group only on the details path (see {@code
- * EcsServerClusterProvider}), so classic {@code ecs} services and the high-volume list/summary
- * calls never trigger it.
+ * <p>This is a live {@code ListTaskDefinitions} call, not cache-backed: the task-definition cache
+ * only ever holds revisions currently referenced by a live service and is authoritatively pruned,
+ * so it cannot enumerate a family's history. The result is attached to the {@code ecs-native}
+ * server group only on the details path (see {@code EcsServerClusterProvider}), so classic {@code
+ * ecs} services and the high-volume list/summary calls never trigger it.
  */
 @Component
 public class EcsTaskDefinitionRevisionService {
 
   /**
-   * The most task-definition revisions to describe (for their container images). ECS returns
-   * revisions newest-first, so this caps how far back the picker looks; older revisions are rarely
-   * useful rollback targets and each one costs a {@code DescribeTaskDefinition} call.
+   * The maximum number of task-definition ARNs to return. ECS returns revisions newest-first, so
+   * this caps how far back the picker looks without loading task-definition bodies.
    */
   static final int MAX_REVISIONS = 50;
 
@@ -93,27 +88,17 @@ public class EcsTaskDefinitionRevisionService {
 
     List<EcsTaskDefinitionRevision> revisions = new ArrayList<>();
     for (String arn : revisionArns.subList(0, Math.min(revisionArns.size(), MAX_REVISIONS))) {
-      TaskDefinition taskDefinition =
-          ecs.describeTaskDefinition(
-                  DescribeTaskDefinitionRequest.builder().taskDefinition(arn).build())
-              .taskDefinition();
       boolean isCurrent = normalizeArn(arn).equals(normalizeArn(currentTaskDefinitionArn));
-      revisions.add(toRevision(taskDefinition, isCurrent));
+      revisions.add(toRevision(arn, isCurrent));
     }
     return revisions;
   }
 
-  private static EcsTaskDefinitionRevision toRevision(
-      TaskDefinition taskDefinition, boolean current) {
-    List<String> images = new ArrayList<>();
-    for (ContainerDefinition container : taskDefinition.containerDefinitions()) {
-      images.add(container.image());
-    }
+  private static EcsTaskDefinitionRevision toRevision(String taskDefinitionArn, boolean current) {
     return EcsTaskDefinitionRevision.builder()
-        .taskDefinitionArn(taskDefinition.taskDefinitionArn())
-        .family(taskDefinition.family())
-        .revision(taskDefinition.revision())
-        .containerImages(images)
+        .taskDefinitionArn(taskDefinitionArn)
+        .family(familyFromTaskDefinitionArn(taskDefinitionArn))
+        .revision(revisionFromTaskDefinitionArn(taskDefinitionArn))
         .current(current)
         .build();
   }
@@ -132,6 +117,11 @@ public class EcsTaskDefinitionRevisionService {
     String familyAndRevision = StringUtils.isBlank(afterSlash) ? taskDefinitionArn : afterSlash;
     String family = StringUtils.substringBeforeLast(familyAndRevision, ":");
     return StringUtils.isBlank(family) ? null : family;
+  }
+
+  private static Integer revisionFromTaskDefinitionArn(String taskDefinitionArn) {
+    String revision = StringUtils.substringAfterLast(taskDefinitionArn, ":");
+    return StringUtils.isNumeric(revision) ? Integer.valueOf(revision) : null;
   }
 
   /**

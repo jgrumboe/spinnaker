@@ -178,6 +178,11 @@ export const validateEcsNativeDeployment: Validator = (values) => {
   if (required(strategy) && strategy !== 'none' && strategy !== '') {
     errors.strategy = 'Native ECS deployments require the Spinnaker deployment strategy to be None.';
   }
+  if (values.deploymentStrategy === 'BLUE_GREEN') {
+    errors.deploymentStrategy =
+      'Native ECS Blue/Green deployments are unavailable because Orca and Deck do not model Stop/Continue lifecycle actions. Use Rolling.';
+    return errors;
+  }
 
   const minimumHealthyPercent = values.minimumHealthyPercent;
   const maximumPercent = values.maximumPercent;

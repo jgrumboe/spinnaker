@@ -17,15 +17,16 @@
 package com.netflix.spinnaker.clouddriver.ecs.controllers;
 
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider;
+import com.netflix.spinnaker.clouddriver.ecs.cache.Keys;
 import com.netflix.spinnaker.clouddriver.ecs.cache.client.ServiceCacheClient;
 import com.netflix.spinnaker.clouddriver.ecs.cache.model.Service;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsServiceDeploymentStatus;
+import com.netflix.spinnaker.clouddriver.ecs.security.EcsCredentialsResolver;
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials;
 import com.netflix.spinnaker.credentials.CredentialsRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -67,36 +68,24 @@ public class EcsNativeServiceDeploymentController {
    * different case than the credential is registered under.
    */
   private NetflixECSCredentials resolveCredentials(String account) {
-    NetflixECSCredentials exact = credentialsRepository.getOne(account);
-    if (exact != null) {
-      return exact;
-    }
-    if (account == null) {
-      return null;
-    }
-    Set<? extends NetflixECSCredentials> all = credentialsRepository.getAll();
-    if (all == null) {
-      return null;
-    }
-    return all.stream().filter(c -> account.equalsIgnoreCase(c.getName())).findFirst().orElse(null);
+    return EcsCredentialsResolver.resolve(credentialsRepository, account);
   }
 
   /**
-   * Returns the ECS service deployment matching the task definition produced by the write
-   * operation. The expected identity is mandatory: selecting the current PRIMARY deployment would
-   * allow an ECS rollback deployment to appear successful for the failed deployment that preceded
-   * it.
+   * Returns the ECS service deployment identified by the ARN produced by the write operation. The
+   * expected identity is mandatory: selecting the current PRIMARY deployment would allow an ECS
+   * rollback deployment to appear successful for the failed deployment that preceded it.
    */
   @RequestMapping(value = "/deploymentStatus", method = RequestMethod.GET)
   ResponseEntity<?> getDeploymentStatus(
       @PathVariable String account,
       @PathVariable String region,
       @PathVariable String serverGroupName,
-      @RequestParam(name = "expectedTaskDefinition", required = false)
-          String expectedTaskDefinition) {
-    if (expectedTaskDefinition == null || expectedTaskDefinition.isBlank()) {
+      @RequestParam(name = "expectedServiceDeploymentArn", required = false)
+          String expectedServiceDeploymentArn) {
+    if (expectedServiceDeploymentArn == null || expectedServiceDeploymentArn.isBlank()) {
       return new ResponseEntity<>(
-          "expectedTaskDefinition is required to identify the ecs-native deployment",
+          "expectedServiceDeploymentArn is required to identify the ecs-native deployment",
           HttpStatus.BAD_REQUEST);
     }
 
@@ -108,9 +97,8 @@ public class EcsNativeServiceDeploymentController {
     String resolvedAccount = credentials.getName();
 
     Optional<Service> cachedService =
-        serviceCacheClient.getAll(resolvedAccount, region).stream()
-            .filter(service -> service.getServiceName().equals(serverGroupName))
-            .findFirst();
+        Optional.ofNullable(
+            serviceCacheClient.get(Keys.getServiceKey(resolvedAccount, region, serverGroupName)));
     if (cachedService.isEmpty()) {
       return new ResponseEntity<>(
           String.format(
@@ -153,30 +141,20 @@ public class EcsNativeServiceDeploymentController {
     Optional<ServiceDeployment> deployment =
         described.serviceDeployments().stream()
             .filter(
-                candidate -> {
-                  if (candidate.targetServiceRevision() == null) {
-                    return false;
-                  }
-                  Optional<ServiceRevision> targetRevision =
-                      revisions.serviceRevisions().stream()
-                          .filter(
-                              revision ->
-                                  candidate
-                                      .targetServiceRevision()
-                                      .arn()
-                                      .equals(revision.serviceRevisionArn()))
-                          .findFirst();
-                  return targetRevision.isPresent()
-                      && expectedTaskDefinition.equals(targetRevision.get().taskDefinition());
-                })
+                candidate -> expectedServiceDeploymentArn.equals(candidate.serviceDeploymentArn()))
             .findFirst();
     if (deployment.isEmpty()) {
       return notFound(
           serverGroupName,
-          "ECS has not exposed a service deployment for task definition " + expectedTaskDefinition);
+          "ECS has not exposed service deployment " + expectedServiceDeploymentArn);
     }
 
     ServiceDeployment selectedDeployment = deployment.get();
+    if (selectedDeployment.targetServiceRevision() == null) {
+      return notFound(
+          serverGroupName,
+          "ECS service deployment " + expectedServiceDeploymentArn + " has no target revision");
+    }
     ServiceRevision selectedRevision =
         revisions.serviceRevisions().stream()
             .filter(

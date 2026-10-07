@@ -447,6 +447,15 @@ class EcsServerClusterProviderSpec extends Specification {
     serverGroup.getIsNative() == null
   }
 
+  def 'resolves an ECS account case-insensitively for server-group details'() {
+    when:
+    def serverGroup = provider.getServerGroup('TEST', 'us-east-1', 'myapp-kcats-liated-v007', true)
+
+    then:
+    serverGroup != null
+    serverGroup.name == 'myapp-kcats-liated-v007'
+  }
+
   def makeEcsServerGroup(String serviceName, String region, long startTime, String taskId, Map healthStatus, String ip) {
     Names name = Names.parseName(serviceName)
     new EcsServerGroup(

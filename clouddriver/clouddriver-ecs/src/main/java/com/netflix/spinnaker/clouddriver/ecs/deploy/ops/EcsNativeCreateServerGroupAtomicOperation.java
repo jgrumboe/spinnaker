@@ -17,8 +17,6 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonCredentials;
-import com.netflix.spinnaker.clouddriver.aws.security.AssumeRoleAmazonCredentials;
-import com.netflix.spinnaker.clouddriver.aws.security.NetflixAssumeRoleAmazonCredentials;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult;
 import com.netflix.spinnaker.clouddriver.deploy.DeploymentResult.Deployment;
 import com.netflix.spinnaker.clouddriver.ecs.EcsCloudProvider;
@@ -26,7 +24,6 @@ import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag;
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeCreateServerGroupDescription;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsResource;
 import com.netflix.spinnaker.clouddriver.ecs.names.EcsServerGroupName;
-import com.netflix.spinnaker.clouddriver.ecs.security.NetflixAssumeRoleEcsCredentials;
 import com.netflix.spinnaker.clouddriver.names.NamerRegistry;
 import com.netflix.spinnaker.moniker.Moniker;
 import com.netflix.spinnaker.moniker.Namer;
@@ -40,8 +37,6 @@ import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.services.ecs.EcsClient;
 import software.amazon.awssdk.services.ecs.model.AdvancedConfiguration;
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest;
-import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
-import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
 import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest;
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse;
@@ -76,9 +71,6 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  */
 public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroupAtomicOperation {
 
-  /** ECS deployment strategy that shifts traffic to a whole new task set (vs. {@code ROLLING}). */
-  private static final String BLUE_GREEN_STRATEGY = "BLUE_GREEN";
-
   public EcsNativeCreateServerGroupAtomicOperation(
       EcsNativeCreateServerGroupDescription description) {
     super(description);
@@ -86,11 +78,17 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
 
   @Override
   public DeploymentResult operate(List priorOutputs) {
+    // Preserve the fail-fast behavior for an explicitly requested unsupported strategy. When the
+    // strategy is omitted, the service lookup below is required to validate the stored strategy.
+    EcsNativeDeploymentConfiguration.validateLifecycleSupport(nativeDescription());
+
     // ecs-native is always in-place: there is one durable ECS service per cluster, named by the
     // fixed (unversioned) family name. If that service already exists, roll it via a native
     // UpdateService; only the first-ever deploy (service absent) falls through to CreateService.
     Service existingService = resolveExistingService();
     if (existingService != null) {
+      EcsNativeDeploymentConfiguration.validateLifecycleSupport(
+          nativeDescription(), existingService.deploymentConfiguration());
       return updateExistingServiceInPlace(existingService);
     }
     updateTaskStatus("No existing ecs-native service found; creating the initial durable service.");
@@ -182,38 +180,29 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     EcsServerGroupName serverGroupName = new EcsServerGroupName(existingServiceName);
     TaskDefinition taskDefinition = registerTaskDefinition(ecs, taskRoleArn, serverGroupName);
 
-    UpdateServiceRequest.Builder requestBuilder;
-    if (description.getCapacity() != null) {
-      requestBuilder =
-          buildAuthoritativeUpdateRequest(
-              ecs, taskDefinition.taskDefinitionArn(), serverGroupName, existingService);
-      // Application Auto Scaling owns min/max capacity, while this native deploy owns the desired
-      // count. Re-registering the target makes capacity edits explicit instead of silently ignored.
-    } else {
-      requestBuilder =
-          UpdateServiceRequest.builder()
-              .cluster(description.getEcsClusterName())
-              .service(existingServiceName)
-              .taskDefinition(taskDefinition.taskDefinitionArn())
-              .forceNewDeployment(true);
+    UpdateServiceRequest.Builder requestBuilder =
+        buildAuthoritativeUpdateRequest(
+            ecs, taskDefinition.taskDefinitionArn(), serverGroupName, existingService);
 
-      validateBlueGreenInPlaceConfig(nativeDescription());
+    EcsNativeBlueGreenConfiguration.validateInPlaceConfig(nativeDescription());
 
-      DeploymentConfiguration deploymentConfiguration =
-          buildDeploymentConfiguration(existingService.deploymentConfiguration());
-      if (deploymentConfiguration != null) {
-        requestBuilder.deploymentConfiguration(deploymentConfiguration);
-      }
+    DeploymentConfiguration deploymentConfiguration =
+        EcsNativeDeploymentConfiguration.forUpdate(
+            nativeDescription(), existingService.deploymentConfiguration());
+    if (deploymentConfiguration != null) {
+      requestBuilder.deploymentConfiguration(deploymentConfiguration);
+    }
 
-      // For a blue/green ALB traffic shift ECS needs the advancedConfiguration on the service's
-      // load balancer, and UpdateService only carries it when we also (re)send loadBalancers.
-      AdvancedConfiguration advancedConfiguration = buildAdvancedConfiguration(nativeDescription());
-      if (advancedConfiguration != null) {
-        Collection<LoadBalancer> loadBalancers =
-            retrieveLoadBalancers(serverGroupName.getContainerName());
-        requestBuilder.loadBalancers(
-            withAdvancedConfiguration(new ArrayList<>(loadBalancers), advancedConfiguration));
-      }
+    // For a blue/green ALB traffic shift ECS needs the advancedConfiguration on the service's
+    // load balancer, and UpdateService only carries it when we also (re)send loadBalancers.
+    AdvancedConfiguration advancedConfiguration =
+        EcsNativeBlueGreenConfiguration.buildAdvancedConfiguration(nativeDescription());
+    if (advancedConfiguration != null) {
+      Collection<LoadBalancer> loadBalancers =
+          retrieveLoadBalancers(serverGroupName.getContainerName());
+      requestBuilder.loadBalancers(
+          EcsNativeBlueGreenConfiguration.withAdvancedConfiguration(
+              new ArrayList<>(loadBalancers), advancedConfiguration));
     }
 
     Service service = ecs.updateService(requestBuilder.build()).service();
@@ -223,6 +212,12 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     updateTaskStatus("Done rolling ecs-native service " + existingServiceName + " in place.");
 
     return buildDeploymentResult(service);
+  }
+
+  private boolean hasLoadBalancerConfiguration() {
+    return description.getTargetGroup() != null
+        || description.getTargetGroupMappings() != null
+        || description.getLoadBalancedContainer() != null;
   }
 
   /**
@@ -236,36 +231,85 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
       String taskDefinitionArn,
       EcsServerGroupName serverGroupName,
       Service existingService) {
+    if (description.getCapacity() == null) {
+      return UpdateServiceRequest.builder()
+          .cluster(description.getEcsClusterName())
+          .service(existingService.serviceName())
+          .taskDefinition(taskDefinitionArn)
+          .networkConfiguration(existingService.networkConfiguration())
+          .serviceRegistries(existingService.serviceRegistries())
+          .placementConstraints(existingService.placementConstraints())
+          .placementStrategy(existingService.placementStrategy())
+          .capacityProviderStrategy(existingService.capacityProviderStrategy())
+          .platformVersion(existingService.platformVersion())
+          .healthCheckGracePeriodSeconds(existingService.healthCheckGracePeriodSeconds())
+          .enableExecuteCommand(
+              description.getEnableExecuteCommand() != null
+                  ? description.getEnableExecuteCommand()
+                  : existingService.enableExecuteCommand())
+          .loadBalancers(existingService.loadBalancers())
+          .forceNewDeployment(true);
+    }
+
     Namer<EcsResource> namer =
         NamerRegistry.lookup()
             .withProvider(EcsCloudProvider.ID)
             .withAccount(description.getAccount())
             .withResource(EcsResource.class);
+    Integer desiredCount =
+        description.getCapacity() == null
+            ? existingService.desiredCount()
+            : description.getCapacity().getDesired();
     CreateServiceRequest serviceRequest =
-        makeServiceRequest(
-            taskDefinitionArn,
-            serverGroupName,
-            description.getCapacity().getDesired(),
-            namer,
-            true);
+        makeServiceRequest(taskDefinitionArn, serverGroupName, desiredCount, namer, true);
 
-    return UpdateServiceRequest.builder()
-        .cluster(serviceRequest.cluster())
-        .service(serviceRequest.serviceName())
-        .taskDefinition(taskDefinitionArn)
-        .desiredCount(serviceRequest.desiredCount())
-        .networkConfiguration(serviceRequest.networkConfiguration())
-        .serviceRegistries(serviceRequest.serviceRegistries())
-        .placementConstraints(serviceRequest.placementConstraints())
-        .placementStrategy(serviceRequest.placementStrategy())
-        .capacityProviderStrategy(serviceRequest.capacityProviderStrategy())
-        .platformVersion(serviceRequest.platformVersion())
-        .healthCheckGracePeriodSeconds(serviceRequest.healthCheckGracePeriodSeconds())
-        .enableExecuteCommand(serviceRequest.enableExecuteCommand())
-        .loadBalancers(serviceRequest.loadBalancers())
-        .deploymentConfiguration(
-            buildDeploymentConfiguration(existingService.deploymentConfiguration()))
-        .forceNewDeployment(true);
+    UpdateServiceRequest.Builder requestBuilder =
+        UpdateServiceRequest.builder()
+            .cluster(serviceRequest.cluster())
+            .service(serviceRequest.serviceName())
+            .taskDefinition(taskDefinitionArn)
+            .networkConfiguration(
+                serviceRequest.networkConfiguration() != null
+                    ? serviceRequest.networkConfiguration()
+                    : existingService.networkConfiguration())
+            .serviceRegistries(
+                description.getServiceDiscoveryAssociations() != null
+                    ? serviceRequest.serviceRegistries()
+                    : existingService.serviceRegistries())
+            .placementConstraints(
+                description.getPlacementConstraints() != null
+                    ? description.getPlacementConstraints()
+                    : existingService.placementConstraints())
+            .placementStrategy(
+                description.getPlacementStrategySequence() != null
+                    ? description.getPlacementStrategySequence()
+                    : existingService.placementStrategy())
+            .capacityProviderStrategy(
+                description.getCapacityProviderStrategy() != null
+                    ? description.getCapacityProviderStrategy()
+                    : existingService.capacityProviderStrategy())
+            .platformVersion(
+                StringUtils.isNotBlank(description.getPlatformVersion())
+                    ? description.getPlatformVersion()
+                    : existingService.platformVersion())
+            .healthCheckGracePeriodSeconds(
+                description.getHealthCheckGracePeriodSeconds() != null
+                    ? description.getHealthCheckGracePeriodSeconds()
+                    : existingService.healthCheckGracePeriodSeconds())
+            .enableExecuteCommand(
+                description.getEnableExecuteCommand() != null
+                    ? description.getEnableExecuteCommand()
+                    : existingService.enableExecuteCommand())
+            .loadBalancers(
+                hasLoadBalancerConfiguration()
+                    ? serviceRequest.loadBalancers()
+                    : existingService.loadBalancers())
+            .forceNewDeployment(true);
+
+    if (description.getCapacity() != null) {
+      requestBuilder.desiredCount(desiredCount);
+    }
+    return requestBuilder;
   }
 
   @Override
@@ -280,45 +324,22 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
         super.makeServiceRequest(
             taskDefinitionArn, newServerGroupName, desiredCount, namer, taggingEnabled);
 
-    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
-
-    DeploymentConfiguration.Builder deploymentConfigBuilder =
-        request.deploymentConfiguration() != null
-            ? request.deploymentConfiguration().toBuilder()
-            : DeploymentConfiguration.builder();
-
-    if (nativeDescription.getMinimumHealthyPercent() != null) {
-      deploymentConfigBuilder.minimumHealthyPercent(nativeDescription.getMinimumHealthyPercent());
-    }
-    if (nativeDescription.getMaximumPercent() != null) {
-      deploymentConfigBuilder.maximumPercent(nativeDescription.getMaximumPercent());
-    }
-    deploymentConfigBuilder.deploymentCircuitBreaker(
-        DeploymentCircuitBreaker.builder()
-            .enable(nativeDescription.isEnableDeploymentCircuitBreaker())
-            .rollback(nativeDescription.isDeploymentCircuitBreakerRollback())
-            .build());
-
-    DeploymentAlarms alarms = buildDeploymentAlarms(nativeDescription);
-    if (alarms != null) {
-      deploymentConfigBuilder.alarms(alarms);
-    }
-    if (StringUtils.isNotBlank(nativeDescription.getDeploymentStrategy())) {
-      deploymentConfigBuilder.strategy(nativeDescription.getDeploymentStrategy());
-    }
-    if (nativeDescription.getBakeTimeInMinutes() != null) {
-      deploymentConfigBuilder.bakeTimeInMinutes(nativeDescription.getBakeTimeInMinutes());
-    }
+    DeploymentConfiguration deploymentConfiguration =
+        EcsNativeDeploymentConfiguration.forCreate(
+            nativeDescription(), request.deploymentConfiguration());
 
     CreateServiceRequest.Builder requestBuilder =
-        request.toBuilder().deploymentConfiguration(deploymentConfigBuilder.build());
+        request.toBuilder().deploymentConfiguration(deploymentConfiguration);
 
-    validateBlueGreenLoadBalancerConfig(nativeDescription, request.loadBalancers());
+    EcsNativeBlueGreenConfiguration.validateLoadBalancerConfig(
+        nativeDescription(), request.loadBalancers());
 
-    AdvancedConfiguration advancedConfiguration = buildAdvancedConfiguration(nativeDescription);
+    AdvancedConfiguration advancedConfiguration =
+        EcsNativeBlueGreenConfiguration.buildAdvancedConfiguration(nativeDescription());
     if (advancedConfiguration != null) {
       requestBuilder.loadBalancers(
-          withAdvancedConfiguration(request.loadBalancers(), advancedConfiguration));
+          EcsNativeBlueGreenConfiguration.withAdvancedConfiguration(
+              request.loadBalancers(), advancedConfiguration));
     }
 
     if (!taggingEnabled) {
@@ -349,19 +370,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    */
   private static void validateBlueGreenLoadBalancerConfig(
       EcsNativeCreateServerGroupDescription nativeDescription, List<LoadBalancer> loadBalancers) {
-    boolean isBlueGreen =
-        BLUE_GREEN_STRATEGY.equalsIgnoreCase(
-            StringUtils.trimToEmpty(nativeDescription.getDeploymentStrategy()));
-    boolean hasLoadBalancer = loadBalancers != null && !loadBalancers.isEmpty();
-    if (isBlueGreen && hasLoadBalancer && !hasAllAlbTrafficShiftFields(nativeDescription)) {
-      throw new IllegalArgumentException(
-          "The Blue/Green deployment strategy on a load-balanced ECS service requires the ALB"
-              + " traffic-shift config: alternateTargetGroupArn, productionListenerRule,"
-              + " testListenerRule and blueGreenRoleArn must all be set. AWS ECS rejects a"
-              + " Blue/Green deploy whose load balancers have no advancedConfiguration. Provide all"
-              + " four ARNs, or use the Rolling strategy for an in-place, single-target-group"
-              + " deploy.");
-    }
+    EcsNativeBlueGreenConfiguration.validateLoadBalancerConfig(nativeDescription, loadBalancers);
   }
 
   /**
@@ -374,37 +383,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    */
   private static void validateBlueGreenInPlaceConfig(
       EcsNativeCreateServerGroupDescription nativeDescription) {
-    boolean isBlueGreen =
-        BLUE_GREEN_STRATEGY.equalsIgnoreCase(
-            StringUtils.trimToEmpty(nativeDescription.getDeploymentStrategy()));
-    if (isBlueGreen
-        && descriptionDeclaresLoadBalancer(nativeDescription)
-        && !hasAllAlbTrafficShiftFields(nativeDescription)) {
-      throw new IllegalArgumentException(
-          "The Blue/Green deployment strategy on a load-balanced ECS service requires the ALB"
-              + " traffic-shift config: alternateTargetGroupArn, productionListenerRule,"
-              + " testListenerRule and blueGreenRoleArn must all be set. AWS ECS rejects a"
-              + " Blue/Green deploy whose load balancers have no advancedConfiguration. Provide all"
-              + " four ARNs, or use the Rolling strategy for an in-place, single-target-group"
-              + " deploy.");
-    }
-  }
-
-  /** True when the description attaches a load balancer via {@code targetGroup} or mappings. */
-  private static boolean descriptionDeclaresLoadBalancer(
-      EcsNativeCreateServerGroupDescription nativeDescription) {
-    return StringUtils.isNotBlank(nativeDescription.getTargetGroup())
-        || (nativeDescription.getTargetGroupMappings() != null
-            && !nativeDescription.getTargetGroupMappings().isEmpty());
-  }
-
-  /** True when all four ALB traffic-shift fields are set; false when all are unset. */
-  private static boolean hasAllAlbTrafficShiftFields(
-      EcsNativeCreateServerGroupDescription nativeDescription) {
-    return StringUtils.isNotBlank(nativeDescription.getAlternateTargetGroupArn())
-        && StringUtils.isNotBlank(nativeDescription.getProductionListenerRule())
-        && StringUtils.isNotBlank(nativeDescription.getTestListenerRule())
-        && StringUtils.isNotBlank(nativeDescription.getBlueGreenRoleArn());
+    EcsNativeBlueGreenConfiguration.validateInPlaceConfig(nativeDescription);
   }
 
   /**
@@ -417,31 +396,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    */
   private static AdvancedConfiguration buildAdvancedConfiguration(
       EcsNativeCreateServerGroupDescription nativeDescription) {
-    String alternateTargetGroupArn = nativeDescription.getAlternateTargetGroupArn();
-    String productionListenerRule = nativeDescription.getProductionListenerRule();
-    String testListenerRule = nativeDescription.getTestListenerRule();
-    String roleArn = nativeDescription.getBlueGreenRoleArn();
-
-    boolean anySet =
-        StringUtils.isNotBlank(alternateTargetGroupArn)
-            || StringUtils.isNotBlank(productionListenerRule)
-            || StringUtils.isNotBlank(testListenerRule)
-            || StringUtils.isNotBlank(roleArn);
-    if (!anySet) {
-      return null;
-    }
-    if (!hasAllAlbTrafficShiftFields(nativeDescription)) {
-      throw new IllegalArgumentException(
-          "alternateTargetGroupArn, productionListenerRule, testListenerRule and"
-              + " blueGreenRoleArn must all be set together to configure a blue/green ALB"
-              + " traffic shift, or all left unset to skip it.");
-    }
-    return AdvancedConfiguration.builder()
-        .alternateTargetGroupArn(alternateTargetGroupArn)
-        .productionListenerRule(productionListenerRule)
-        .testListenerRule(testListenerRule)
-        .roleArn(roleArn)
-        .build();
+    return EcsNativeBlueGreenConfiguration.buildAdvancedConfiguration(nativeDescription);
   }
 
   /**
@@ -452,16 +407,8 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    */
   private static List<LoadBalancer> withAdvancedConfiguration(
       List<LoadBalancer> loadBalancers, AdvancedConfiguration advancedConfiguration) {
-    if (loadBalancers == null || loadBalancers.size() != 1) {
-      throw new IllegalArgumentException(
-          "A blue/green ALB traffic shift requires exactly one target-group mapping; found "
-              + (loadBalancers == null ? 0 : loadBalancers.size())
-              + ".");
-    }
-    List<LoadBalancer> updated = new ArrayList<>(loadBalancers.size());
-    updated.add(
-        loadBalancers.get(0).toBuilder().advancedConfiguration(advancedConfiguration).build());
-    return updated;
+    return EcsNativeBlueGreenConfiguration.withAdvancedConfiguration(
+        loadBalancers, advancedConfiguration);
   }
 
   /**
@@ -471,66 +418,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    */
   private DeploymentConfiguration buildDeploymentConfiguration(
       DeploymentConfiguration existingConfiguration) {
-    EcsNativeCreateServerGroupDescription nativeDescription = nativeDescription();
-    DeploymentAlarms alarms = buildDeploymentAlarms(nativeDescription);
-    boolean hasConfig =
-        nativeDescription.getMinimumHealthyPercent() != null
-            || nativeDescription.getMaximumPercent() != null
-            || nativeDescription.isEnableDeploymentCircuitBreaker()
-            || nativeDescription.isDeploymentCircuitBreakerRollback()
-            || alarms != null
-            || StringUtils.isNotBlank(nativeDescription.getDeploymentStrategy())
-            || nativeDescription.getBakeTimeInMinutes() != null;
-    if (!hasConfig) {
-      return null;
-    }
-
-    DeploymentConfiguration.Builder builder =
-        existingConfiguration == null
-            ? DeploymentConfiguration.builder()
-            : existingConfiguration.toBuilder();
-    if (nativeDescription.getMinimumHealthyPercent() != null) {
-      builder.minimumHealthyPercent(nativeDescription.getMinimumHealthyPercent());
-    }
-    if (nativeDescription.getMaximumPercent() != null) {
-      builder.maximumPercent(nativeDescription.getMaximumPercent());
-    }
-    if (nativeDescription.isEnableDeploymentCircuitBreaker()
-        || nativeDescription.isDeploymentCircuitBreakerRollback()) {
-      builder.deploymentCircuitBreaker(
-          DeploymentCircuitBreaker.builder()
-              .enable(nativeDescription.isEnableDeploymentCircuitBreaker())
-              .rollback(nativeDescription.isDeploymentCircuitBreakerRollback())
-              .build());
-    }
-    if (alarms != null) {
-      builder.alarms(alarms);
-    }
-    if (StringUtils.isNotBlank(nativeDescription.getDeploymentStrategy())) {
-      builder.strategy(nativeDescription.getDeploymentStrategy());
-    }
-    if (nativeDescription.getBakeTimeInMinutes() != null) {
-      builder.bakeTimeInMinutes(nativeDescription.getBakeTimeInMinutes());
-    }
-    return builder.build();
-  }
-
-  /**
-   * Builds a {@link DeploymentAlarms} only when the description actually names alarms or opts in,
-   * so a deploy that doesn't use them doesn't send an empty/disabled alarms block.
-   */
-  private static DeploymentAlarms buildDeploymentAlarms(
-      EcsNativeCreateServerGroupDescription nativeDescription) {
-    boolean hasAlarmNames =
-        nativeDescription.getAlarmNames() != null && !nativeDescription.getAlarmNames().isEmpty();
-    if (!hasAlarmNames && !nativeDescription.isEnableDeploymentAlarms()) {
-      return null;
-    }
-    return DeploymentAlarms.builder()
-        .alarmNames(nativeDescription.getAlarmNames())
-        .enable(true)
-        .rollback(nativeDescription.isDeploymentAlarmsRollback())
-        .build();
+    return EcsNativeDeploymentConfiguration.forUpdate(nativeDescription(), existingConfiguration);
   }
 
   /**
@@ -538,21 +426,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
    * shared create operation; exposed as {@code protected} so it can be overridden in tests.
    */
   protected String resolveTaskRoleArn(AmazonCredentials credentials) {
-    String role;
-    if (credentials instanceof AssumeRoleAmazonCredentials) {
-      role = ((AssumeRoleAmazonCredentials) credentials).getAssumeRole();
-    } else if (credentials instanceof NetflixAssumeRoleAmazonCredentials) {
-      role = ((NetflixAssumeRoleAmazonCredentials) credentials).getAssumeRole();
-    } else if (credentials instanceof NetflixAssumeRoleEcsCredentials) {
-      role = ((NetflixAssumeRoleEcsCredentials) credentials).getAssumeRole();
-    } else {
-      throw new UnsupportedOperationException(
-          "The given kind of credentials is not supported for ecs-native in-place updates.");
-    }
-    if (!role.startsWith("arn:")) {
-      return String.format("arn:aws:iam::%s:%s", credentials.getAccountId(), role);
-    }
-    return role;
+    return inferAssumedRoleArn(credentials);
   }
 
   /**
@@ -600,6 +474,11 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
       deployment.setLocation(getRegion());
       deployment.setServerGroupName(service.serviceName());
       deployment.getMetadata().put("ecsNativeExpectedTaskDefinition", service.taskDefinition());
+      if (StringUtils.isNotBlank(service.currentServiceDeployment())) {
+        deployment
+            .getMetadata()
+            .put("ecsNativeExpectedServiceDeploymentArn", service.currentServiceDeployment());
+      }
       result.setDeployments(Collections.singleton(deployment));
     }
     return result;

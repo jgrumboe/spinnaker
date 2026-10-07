@@ -33,7 +33,8 @@ import lombok.EqualsAndHashCode;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
-public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDescription {
+public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDescription
+    implements EcsNativeDeploymentSettings {
 
   /** Lower bound (percent) of healthy tasks ECS keeps running during a deployment. */
   @Nullable Integer minimumHealthyPercent;
@@ -46,6 +47,16 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
    * deployment is automatically rolled back by ECS to the last completed deployment.
    */
   boolean deploymentCircuitBreakerRollback;
+
+  @Override
+  public Boolean getEnableDeploymentCircuitBreaker() {
+    return enableDeploymentCircuitBreaker;
+  }
+
+  @Override
+  public Boolean getDeploymentCircuitBreakerRollback() {
+    return deploymentCircuitBreakerRollback;
+  }
 
   /**
    * Names of CloudWatch alarms ECS should watch during a deployment. When non-empty (or {@link

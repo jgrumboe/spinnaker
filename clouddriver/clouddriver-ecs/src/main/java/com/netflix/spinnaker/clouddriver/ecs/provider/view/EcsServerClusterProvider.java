@@ -34,6 +34,7 @@ import com.netflix.spinnaker.clouddriver.ecs.model.EcsServerGroup;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsTask;
 import com.netflix.spinnaker.clouddriver.ecs.model.EcsTaskDefinitionRevision;
 import com.netflix.spinnaker.clouddriver.ecs.model.TaskDefinition;
+import com.netflix.spinnaker.clouddriver.ecs.security.EcsCredentialsResolver;
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials;
 import com.netflix.spinnaker.clouddriver.ecs.services.ContainerInformationService;
 import com.netflix.spinnaker.clouddriver.ecs.services.EcsTaskDefinitionRevisionService;
@@ -509,15 +510,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
   }
 
   private NetflixECSCredentials resolveCredentials(String account) {
-    NetflixECSCredentials exact = credentialsRepository.getOne(account);
-    if (exact != null || account == null) {
-      return exact;
-    }
-    Set<? extends NetflixECSCredentials> all = credentialsRepository.getAll();
-    if (all == null) {
-      return null;
-    }
-    return all.stream().filter(c -> account.equalsIgnoreCase(c.getName())).findFirst().orElse(null);
+    return EcsCredentialsResolver.resolve(credentialsRepository, account);
   }
 
   private ServerGroup.InstanceCounts buildInstanceCount(Set<Instance> instances) {
@@ -561,7 +554,7 @@ public class EcsServerClusterProvider implements ClusterProvider<EcsServerCluste
   }
 
   private AmazonCredentials getEcsCredentials(String account) {
-    NetflixECSCredentials creds = credentialsRepository.getOne(account);
+    NetflixECSCredentials creds = EcsCredentialsResolver.resolve(credentialsRepository, account);
     if (creds == null) {
       throw new NoSuchElementException(
           String.format("There is no ECS account by the name of '%s'", account));
