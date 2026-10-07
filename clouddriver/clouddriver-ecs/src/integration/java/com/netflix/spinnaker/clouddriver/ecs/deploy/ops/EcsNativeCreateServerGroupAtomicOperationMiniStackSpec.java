@@ -46,7 +46,6 @@ import org.junit.jupiter.api.Test;
 import org.ministack.testcontainers.MiniStackContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -89,20 +88,11 @@ import software.amazon.awssdk.services.ecs.model.Service;
  * registration, and subnet/security-group selectors are stubbed so the test stays focused on ECS
  * service behavior.
  *
- * <p>Uses the CI-built preview image for ministackorg/ministack#1779 ("fix(ecs): drain completed
- * service deployments"), not yet merged/released: MiniStack's released {@code 1.5.10} never drains
- * the old deployment out of the list once a rollout completes, which this test's assertion on a
- * single collapsed deployment depends on. Swap to a released {@code MiniStackContainer("<tag>")}
- * once #1779 ships. (Confirmed both the drain fix and the underlying real-container-execution
- * behavior empirically first -- see the throwaway {@code MiniStackEcsRolloutSpikeTest} spike, not
- * part of this branch, for that investigation.)
+ * <p>Pins released MiniStack {@code 1.5.22} for deterministic ECS rollout behavior and uses real
+ * infrastructure for task execution and service-deployment state transitions.
  */
 @Testcontainers
 class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
-
-  private static final DockerImageName MINISTACK_PR_1779_PREVIEW_IMAGE =
-      DockerImageName.parse("ministackorg/ministack-preview-build:pr-1779-51b00d6c")
-          .asCompatibleSubstituteFor("ministackorg/ministack");
 
   private static final String REGION = "us-east-1";
   private static final Duration POLL_TIMEOUT = Duration.ofSeconds(120);
@@ -110,7 +100,7 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
 
   @Container
   static final MiniStackContainer ministack =
-      new MiniStackContainer(MINISTACK_PR_1779_PREVIEW_IMAGE).withRealInfrastructure();
+      new MiniStackContainer("1.5.22").withRealInfrastructure();
 
   private static EcsClient ecs;
   private static String subnetId;

@@ -48,7 +48,7 @@ public class EcsTaskDefinitionRevisionService {
    * The maximum number of task-definition ARNs to return. ECS returns revisions newest-first, so
    * this caps how far back the picker looks without loading task-definition bodies.
    */
-  static final int MAX_REVISIONS = 50;
+  static final int MAX_REVISIONS = 10;
 
   private final AmazonClientProvider amazonClientProvider;
 

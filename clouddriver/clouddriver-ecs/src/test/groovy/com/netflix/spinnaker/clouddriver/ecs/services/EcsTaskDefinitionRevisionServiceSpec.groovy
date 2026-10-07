@@ -61,9 +61,9 @@ class EcsTaskDefinitionRevisionServiceSpec extends Specification {
     def revisions = service.listRevisions(credentials, 'us-west-2', 'my-family:60')
 
     then:
-    revisions.size() == 50
+    revisions.size() == 10
     revisions.first().revision == 1
-    revisions.last().revision == 50
+    revisions.last().revision == 10
     0 * ecs.describeTaskDefinition(_)
   }
 }
