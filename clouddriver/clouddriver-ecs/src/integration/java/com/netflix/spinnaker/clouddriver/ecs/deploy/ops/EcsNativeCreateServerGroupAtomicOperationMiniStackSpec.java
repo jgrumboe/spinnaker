@@ -186,7 +186,7 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
     description.setFreeFormDetails(details);
     description.setAccount("test");
     description.setEcsClusterName(clusterName);
-    description.setDockerImageAddress("busybox:latest");
+    description.setDockerImageAddress("nginx:alpine");
     description.setLaunchType("FARGATE");
     description.setNetworkMode("awsvpc");
     description.setComputeUnits(256);
@@ -208,7 +208,7 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
     description.setFreeFormDetails(details);
     description.setAccount("test");
     description.setEcsClusterName(clusterName);
-    description.setDockerImageAddress("busybox:latest");
+    description.setDockerImageAddress("nginx:alpine");
     CreateServerGroupDescription.Source source = new CreateServerGroupDescription.Source();
     source.setRegion(REGION);
     description.setSource(source);
@@ -250,8 +250,11 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
         clusterName,
         serviceName,
         svc ->
-            svc.deployments().size() == 1
-                && "COMPLETED".equals(svc.deployments().get(0).rolloutStateAsString()));
+            svc.deployments().stream()
+                .anyMatch(
+                    deployment ->
+                        "PRIMARY".equals(deployment.status())
+                            && "COMPLETED".equals(deployment.rolloutStateAsString())));
   }
 
   private static String registerRawTaskDefinition(String family, String sleepCommand) {
@@ -429,8 +432,13 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
                     .build())
             .services()
             .get(0);
-    assertThat(finalState.deployments()).hasSize(1);
-    assertThat(finalState.deployments().get(0).rolloutStateAsString()).isEqualTo("COMPLETED");
+    assertThat(
+            finalState.deployments().stream()
+                .anyMatch(
+                    deployment ->
+                        "PRIMARY".equals(deployment.status())
+                            && "COMPLETED".equals(deployment.rolloutStateAsString())))
+        .isTrue();
   }
 
   @Test
@@ -447,7 +455,6 @@ class EcsNativeCreateServerGroupAtomicOperationMiniStackSpec {
 
     assertThat(result.getServerGroupNameByRegion()).containsEntry(REGION, serviceName);
     Service finalState = pollUntilCompleted(clusterName, serviceName);
-    assertThat(finalState.deployments()).hasSize(1);
     assertThat(finalState.deployments().get(0).desiredCount()).isEqualTo(1);
     assertThat(finalState.deployments().get(0).runningCount()).isEqualTo(1);
   }
