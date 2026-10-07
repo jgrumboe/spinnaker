@@ -19,7 +19,7 @@ describe('validateEcsNativeDeployment', () => {
     ).toEqual({});
   });
 
-  it('rejects native blue/green because lifecycle actions are not modeled', () => {
+  it('allows native blue/green when the ALB traffic-shift fields are complete', () => {
     const errors = validateEcsNativeDeployment({
       cloudProvider: 'ecs-native',
       deploymentStrategy: 'BLUE_GREEN',
@@ -30,8 +30,7 @@ describe('validateEcsNativeDeployment', () => {
       blueGreenRoleArn: 'arn:aws:iam::123456789012:role/ecsBlueGreenRole',
     } as any);
 
-    expect(errors.deploymentStrategy).toContain('Stop/Continue');
-    expect(Object.keys(errors)).toEqual(['deploymentStrategy']);
+    expect(errors).toEqual({});
   });
 
   it('rejects a non-None Spinnaker strategy for native ECS', () => {

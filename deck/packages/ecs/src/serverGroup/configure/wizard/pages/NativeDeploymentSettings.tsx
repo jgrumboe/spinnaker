@@ -140,13 +140,11 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
                 value={strategy}
               >
                 <option value="ROLLING">Rolling</option>
-                <option value="BLUE_GREEN" disabled>
-                  Blue/Green (unsupported: lifecycle controls unavailable)
-                </option>
+                <option value="BLUE_GREEN">Blue/Green</option>
               </select>
-              <span className="help-block">
-                Blue/Green is unavailable until Orca and Deck model ECS Stop/Continue deployment lifecycle actions.
-              </span>
+                <span className="help-block">
+                  Blue/Green uses explicit Continue and Stop service-deployment stages with the exact ECS deployment ARN.
+                </span>
             </div>
           </div>
 

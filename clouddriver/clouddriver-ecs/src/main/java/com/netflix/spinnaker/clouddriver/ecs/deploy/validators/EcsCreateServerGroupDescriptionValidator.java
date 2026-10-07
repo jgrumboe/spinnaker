@@ -243,10 +243,6 @@ public class EcsCreateServerGroupDescriptionValidator extends CommonValidator {
         && !StringUtils.equalsIgnoreCase(description.getDeploymentStrategy(), "BLUE_GREEN")) {
       rejectValue(errors, "deploymentStrategy", "invalid");
     }
-    if (StringUtils.equalsIgnoreCase(description.getDeploymentStrategy(), "BLUE_GREEN")) {
-      rejectValue(errors, "deploymentStrategy", "unsupported");
-    }
-
     boolean hasAlarmNames =
         description.getAlarmNames() != null
             && description.getAlarmNames().stream().anyMatch(StringUtils::isNotBlank);

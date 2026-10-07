@@ -117,7 +117,7 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
         .build()
   }
 
-  void 'rejects blue/green before making AWS calls because lifecycle actions are not modeled'() {
+  void 'allows blue/green and forwards deployment configuration'() {
     given:
     def credentials = TestCredential.named('test', [:])
     def operation = new EcsNativeUpdateServiceAtomicOperation(new EcsNativeUpdateServiceDescription(
@@ -132,14 +132,23 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     operation.credentialsRepository = credentialsRepository
     operation.containerInformationService = containerInformationService
 
+    amazonClientProvider.getAmazonEcsV2(_, _) >> ecs
+    containerInformationService.getClusterName(_, _, _) >> 'my-cluster'
+    credentialsRepository.getOne(_) >> credentials
+
     when:
     operation.operate([])
 
     then:
-    def exception = thrown(UnsupportedOperationException)
-    exception.message.contains('StopServiceDeployment')
-    0 * amazonClientProvider.getAmazonEcsV2(_, _)
-    0 * ecs._
+    1 * ecs.describeServices(_) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName('myapp-stack-detail').tags(EcsNativeServiceTag.tag()).build())
+        .build()
+    1 * ecs.updateService({ UpdateServiceRequest request ->
+      request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName('myapp-stack-detail').build())
+        .build()
+
   }
 
   void 'should send deployment alarms when alarm names are configured'() {
@@ -210,9 +219,11 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
     operation.operate([])
 
     then:
-    def exception = thrown(UnsupportedOperationException)
-    exception.message.contains('StopServiceDeployment')
-    0 * ecs.updateService(_)
+    1 * ecs.updateService({ UpdateServiceRequest request ->
+      request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).build())
+        .build()
   }
 
   void 'explicitly disables ECS Exec on an existing enabled service'() {

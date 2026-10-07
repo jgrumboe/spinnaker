@@ -46,9 +46,13 @@ replace Application Auto Scaling with ECS-only capacity settings.
 The native deployment configuration supports rolling bounds, circuit-breaker enable/rollback,
 deployment alarms, bake time, and the ECS `ROLLING` or `BLUE_GREEN` strategy. Blue/green traffic
 shift fields are sent when configured and are validated before the AWS request. The end-to-end
-lifecycle still requires the service-deployment identity and actions described below; use rolling
-unless the complete blue/green path is present in the pipeline model and has been integration
-tested.
+lifecycle uses explicit Continue and Stop stages. Deck references the preceding native deploy stage
+(with the ARN field retained only as an API fallback), and Orca resolves and pins the exact deployment
+ARN from that stage's outputs/context. For `BLUE_GREEN`, the deploy wait succeeds at ECS status
+`IN_PROGRESS` and lifecycle stage `BAKE_TIME`; Continue then issues the exact
+`ContinueServiceDeployment` request and waits for `SUCCESSFUL`. Stop issues the exact
+`StopServiceDeployment` request and polls the same ARN until `STOPPED` or another terminal status.
+Stop is never added as an automatic deployment-failure action.
 
 Create and update return the exact ECS service-deployment ARN in `DeploymentResult` metadata;
 that ARN is the rollout identity consumed by Orca. Orca waits for that service deployment rather
@@ -73,10 +77,9 @@ Clone is deliberately unavailable for the durable native path. A clone descripti
 cannot currently produce a safe fixed-service ownership identity without risking an update to the
 wrong durable service; the native converter/UI therefore reject or mark clone unsupported rather
 than falling back to classic versioned-service semantics. Native `Start` is also not implemented
-(the existing operation is a stub), and `BLUE_GREEN` Stop/Continue lifecycle actions, including
-abort, continue, and bake handling, are not modeled as Spinnaker tasks. Supplying a request strategy
-field alone does not complete that lifecycle. These are lifecycle limitations, not claims that ECS
-lacks the underlying APIs.
+(the existing operation is a stub). `BLUE_GREEN` Continue and Stop are explicit pipeline stages,
+not automatic failure handlers; their exact deployment identity is resolved from the preceding
+deploy stage and lifecycle polling remains pinned to that ARN.
 
 ## SDK, alarms, and deferred verification
 

@@ -73,10 +73,10 @@ final class EcsNativeDeploymentConfiguration {
     if (StringUtils.isBlank(effectiveStrategy) && existingConfiguration != null) {
       effectiveStrategy = existingConfiguration.strategyAsString();
     }
-    if (StringUtils.equalsIgnoreCase(effectiveStrategy, "BLUE_GREEN")) {
-      throw new UnsupportedOperationException(
-          "ecs-native BLUE_GREEN deployments are unsupported until Orca and Deck model "
-              + "StopServiceDeployment and ContinueServiceDeployment lifecycle actions; use ROLLING.");
+    if (StringUtils.isNotBlank(effectiveStrategy)
+        && !StringUtils.equalsAnyIgnoreCase(effectiveStrategy, "ROLLING", "BLUE_GREEN")) {
+      throw new IllegalArgumentException(
+          "ecs-native deployment strategy must be ROLLING or BLUE_GREEN");
     }
   }
 

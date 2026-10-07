@@ -99,6 +99,9 @@ class CreateServerGroupStage extends AbstractDeployStrategyStage implements Forc
     // deploy.server.groups (set by createServerGroup) being present for the task's
     // account/region/serverGroupName resolution, which it is by this point.
     if (ECS_NATIVE_CLOUD_PROVIDER == getCloudProvider(stage)) {
+      if ('BLUE_GREEN' == stage.context.deploymentStrategy?.toString()?.toUpperCase()) {
+        stage.context.ecsNativeWaitForLifecycleGate = true
+      }
       // ecs-native deploys to a single durable ECS service in place and lets ECS's own deployment
       // strategy (ROLLING / BLUE_GREEN) drive the rollout. A Spinnaker red/black-style strategy
       // would try to create a new versioned server group and disable/destroy the old one, which

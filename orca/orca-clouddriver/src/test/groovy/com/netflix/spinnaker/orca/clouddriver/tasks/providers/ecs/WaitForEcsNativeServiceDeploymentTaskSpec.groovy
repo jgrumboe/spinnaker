@@ -33,8 +33,15 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
   @Subject
   def task = new WaitForEcsNativeServiceDeploymentTask(ecsNativeService: ecsNativeService)
 
-  private StageExecutionImpl stageWithContext(Map context) {
+  private StageExecutionImpl stageWithContext(Map context, String deploymentArn = null) {
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
+    if (deploymentArn) {
+      def deploy = new StageExecutionImpl(pipeline, 'createServerGroup', 'deploy', [refId: 'deploy-ref'])
+      deploy.refId = 'deploy-ref'
+      deploy.outputs.ecsNativeExpectedServiceDeploymentArn = deploymentArn
+      pipeline.stages << deploy
+      context.requisiteStageRefIds = ['deploy-ref']
+    }
     return new StageExecutionImpl(pipeline, 'test', 'test', context)
   }
 
@@ -72,6 +79,81 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
     'ROLLBACK_SUCCESSFUL'  | ExecutionStatus.TERMINAL
     'ROLLBACK_FAILED'      | ExecutionStatus.TERMINAL
     'STOPPED'              | ExecutionStatus.TERMINAL
+  }
+
+  def 'resolves ARN from referenced deploy stage output before direct fallback'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
+      ecsNativeExpectedServiceDeploymentArn: 'legacy-arn'
+    ], 'service-deployment-1')
+    def status = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1', status: 'IN_PROGRESS', lifecycleStage: 'SCALE_UP')
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
+    result.status == ExecutionStatus.RUNNING
+  }
+
+  def 'blue green deploy succeeds at the ECS bake-time lifecycle gate'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
+      ecsNativeWaitForLifecycleGate: true
+    ])
+    def status = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1', status: 'IN_PROGRESS', lifecycleStage: 'BAKE_TIME')
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
+    result.status == ExecutionStatus.SUCCEEDED
+  }
+
+  def 'blue green gate keeps polling at a non-pausable lifecycle stage'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
+      ecsNativeWaitForLifecycleGate: true
+    ])
+    def status = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1', status: 'IN_PROGRESS', lifecycleStage: 'SCALE_UP')
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
+    result.status == ExecutionStatus.RUNNING
+  }
+
+  def 'stop wait succeeds when the exact deployment reaches STOPPED'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
+      ecsNativeWaitForStopped: true
+    ])
+    def status = new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1', status: 'STOPPED')
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
+    result.status == ExecutionStatus.SUCCEEDED
   }
 
   def 'completed different deployment identity is terminal, never success'() {

@@ -47,6 +47,8 @@ export function EcsServerGroupActionsComponent({
   // the fixed, unversioned service name (no -vNNN sequence) that only ecs-native produces. Rollout
   // fields (taskDefinitionRevision / rolloutState) are NOT a reliable signal -- classic ECS
   // services carry those too.
+  // Native lifecycle stages use an exact ARN supplied by the deploy stage; the details view does not
+  // derive one from the service payload.
   const isNative = (serverGroup as any).isNative === true;
   const openRollback = () =>
     isNative

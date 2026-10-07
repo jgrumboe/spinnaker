@@ -30,10 +30,12 @@ not silently change the autoscaling min/max policy.
 
 The AWS SDK v2 request model supports configurable minimum/maximum healthy percentages, deployment
 circuit-breaker rollback, deployment alarms, bake time, and `ROLLING`/`BLUE_GREEN` strategy fields.
-Blue/green ALB traffic-shift configuration is validated and included when supplied. The current
-Spinnaker stage model still lacks safe, end-to-end Stop/Continue service-deployment actions and
-lifecycle identity propagation. Therefore any blue/green use must remain fail-closed unless those
-pipeline, Orca, Deck, and runtime checks are present; rolling is the supported operational path.
+Blue/green ALB traffic-shift configuration is validated and included when supplied. Native blue/green
+pipelines use explicit Continue and Stop stages: those stages reference the preceding deploy stage,
+resolve its exact service-deployment ARN, and never infer identity from the service name. The deploy
+waits at ECS's `IN_PROGRESS`/`BAKE_TIME` lifecycle gate; Continue sends the exact Continue request and
+then waits for `SUCCESSFUL`. Stop sends the exact Stop request and waits for that deployment to reach
+`STOPPED` or another terminal status. Rolling deploys continue to wait for `SUCCESSFUL` directly.
 
 Orca waits for the exact service-deployment ARN returned in the ECS create/update
 `DeploymentResult` metadata. That ARN is the rollout identity consumed by Orca; it is not inferred
@@ -74,11 +76,11 @@ single durable service model.
 
 Native clone is intentionally not supported. Cloning cannot currently produce a safe durable
 service identity and ownership decision, so Deck exposes the limitation and the native converter
-rejects the operation rather than silently using classic versioned-service behavior. Native
-`BLUE_GREEN` lifecycle controls are likewise unavailable: Stop/Continue (including abort, continue,
-and bake actions) are not modeled in the stage graph, and the service-deployment identity is not
-propagated through those actions. These are implementation limitations, not statements that ECS
-lacks clone or blue/green APIs.
+rejects the operation rather than silently using classic versioned-service behavior. Native `BLUE_GREEN` lifecycle controls are available through explicit Continue/Stop stages. Deck
+stores a reference to the preceding native deploy stage; the opaque ARN field remains only as a
+backward-compatible API fallback. Orca resolves the ARN from that stage's outputs/context, pins
+all lifecycle requests to it, and uses `IN_PROGRESS` plus `BAKE_TIME` as the explicit ECS lifecycle
+gate before Continue. Stop never runs automatically on deployment failure.
 
 ## Verification boundary
 

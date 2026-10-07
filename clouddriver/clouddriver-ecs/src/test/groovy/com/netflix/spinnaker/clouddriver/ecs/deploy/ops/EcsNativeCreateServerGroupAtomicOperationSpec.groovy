@@ -296,7 +296,7 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     request.loadBalancers().isEmpty()
   }
 
-  def 'should reject blue/green on a load-balanced in-place update when the ALB traffic-shift fields are missing'() {
+  def 'rejects incomplete blue/green ALB traffic-shift configuration'() {
     given:
     // The common ecs-native path: the durable service already exists, so operate() rolls it in
     // place via UpdateService. BLUE_GREEN + a declared target group but no ALB fields must fail
@@ -322,55 +322,63 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     operation.operate([])
 
     then:
-    def e = thrown(UnsupportedOperationException)
-    e.message.contains('StopServiceDeployment')
+    def e = thrown(IllegalArgumentException)
+    e.message.contains('advancedConfiguration')
     0 * ecs.updateService(_)
   }
 
-  def 'native blue/green lifecycle controls fail closed before UpdateService'() {
+  def 'allows native blue/green lifecycle controls to reach UpdateService'() {
     given:
     def description = new EcsNativeCreateServerGroupDescription(
         application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
-        ecsClusterName: 'my-cluster',
-        deploymentStrategy: 'BLUE_GREEN')
-    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
-    operation.getAmazonEcsClient() >> ecs
-
-    when:
-    operation.operate([])
-
-    then:
-    def exception = thrown(UnsupportedOperationException)
-    exception.message.contains('StopServiceDeployment')
-    0 * ecs._
-  }
-
-  def 'rejects a stored blue/green strategy when redeploy omits the strategy before any AWS write'() {
-    given:
-    def serviceName = 'mygreatapp-stack1-details2'
-    def description = new EcsNativeCreateServerGroupDescription(
-        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
-        ecsClusterName: 'my-cluster')
+        ecsClusterName: 'my-cluster', deploymentStrategy: 'BLUE_GREEN')
     def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
     operation.getAmazonEcsClient() >> ecs
     ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
-        .services(Service.builder()
-            .serviceName(serviceName)
-            .status('ACTIVE')
-            .tags(EcsNativeServiceTag.tag())
-            .deploymentConfiguration(DeploymentConfiguration.builder().strategy('BLUE_GREEN').build())
-            .build())
+        .services(Service.builder().serviceName('mygreatapp-stack1-details2').status('ACTIVE').tags(EcsNativeServiceTag.tag()).build())
+        .build()
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    ecs.updateService(_) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName('mygreatapp-stack1-details2').currentServiceDeployment('arn:deployment').build())
         .build()
 
     when:
     operation.operate([])
 
     then:
-    def exception = thrown(UnsupportedOperationException)
-    exception.message.contains('StopServiceDeployment')
-    0 * operation.registerTaskDefinition(_, _, _)
-    0 * ecs.updateService(_)
-    0 * ecs.createService(_)
+    1 * ecs.updateService({ request ->
+      request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+    } as UpdateServiceRequest)
+  }
+
+  def 'allows a stored blue/green strategy when redeploy omits the strategy'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2'
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        ecsClusterName: 'my-cluster', account: 'test',
+        availabilityZones: ['us-west-1': ['us-west-1a']])
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder().serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag())
+            .deploymentConfiguration(DeploymentConfiguration.builder().strategy('BLUE_GREEN').build()).build())
+        .build()
+    ecs.updateService(_) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).currentServiceDeployment('arn:deployment').build()).build()
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.updateService({ request ->
+      request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+    } as UpdateServiceRequest)
   }
 
   def 'explicitly disables ECS Exec on an existing enabled service'() {
@@ -543,23 +551,6 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
         .build()
     0 * ecs.createService(_)
     result.serverGroupNameByRegion == ['us-west-1': serviceName]
-  }
-
-  def 'fails closed before making AWS calls for unsupported blue/green lifecycle controls'() {
-    given:
-    def description = new EcsNativeCreateServerGroupDescription(
-        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
-        deploymentStrategy: 'BLUE_GREEN')
-    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
-    operation.getAmazonEcsClient() >> ecs
-
-    when:
-    operation.operate([])
-
-    then:
-    def exception = thrown(UnsupportedOperationException)
-    exception.message.contains('StopServiceDeployment')
-    0 * ecs._
   }
 
   def 'preserves existing service shape on a sparse in-place redeploy'() {

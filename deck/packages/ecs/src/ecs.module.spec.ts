@@ -48,6 +48,29 @@ describe('ECS package registration', () => {
     );
   });
 
+  it('registers explicit native service deployment lifecycle stages without automatic behavior', () => {
+    Registry.reinitialize();
+    registerEcsPipelineStages();
+    const nativeStages = Registry.pipeline
+      .getStageTypes()
+      .filter((stage) => stage.cloudProvider === 'ecs-native')
+      .sort((left, right) => left.provides.localeCompare(right.provides));
+
+    expect(nativeStages.map((stage) => stage.provides)).toEqual([
+      'continueEcsNativeServiceDeployment',
+      'stopEcsNativeServiceDeployment',
+    ]);
+    nativeStages.forEach((stage) => {
+      expect(stage.component).toEqual(jasmine.any(Function));
+      expect(stage.validators).toEqual([
+        { type: 'requiredField', fieldName: 'credentials', fieldLabel: 'account' },
+        { type: 'requiredField', fieldName: 'region' },
+        { type: 'requiredField', fieldName: 'serverGroupName' },
+      ]);
+      expect(stage).not.toEqual(jasmine.objectContaining({ onFailure: jasmine.anything() }));
+    });
+  });
+
   it('ECS stage configs expose React components without legacy templates', () => {
     Registry.reinitialize();
     registerEcsPipelineStages();

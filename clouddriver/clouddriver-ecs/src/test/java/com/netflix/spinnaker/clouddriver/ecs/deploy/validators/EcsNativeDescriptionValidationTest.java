@@ -65,7 +65,7 @@ class EcsNativeDescriptionValidationTest {
   }
 
   @Test
-  void nativeCreateRejectsUnsupportedBlueGreenLifecycle() {
+  void nativeCreateAcceptsBlueGreenLifecycle() {
     try (AnnotationConfigApplicationContext applicationContext =
         new AnnotationConfigApplicationContext()) {
       applicationContext.registerBean(EcsCreateServerGroupDescriptionValidator.class);
@@ -90,7 +90,7 @@ class EcsNativeDescriptionValidationTest {
 
       assertTrue(
           errors.getFieldErrors().stream()
-              .anyMatch(error -> "deploymentStrategy".equals(error.getField())));
+              .noneMatch(error -> "deploymentStrategy".equals(error.getField())));
     }
   }
 }

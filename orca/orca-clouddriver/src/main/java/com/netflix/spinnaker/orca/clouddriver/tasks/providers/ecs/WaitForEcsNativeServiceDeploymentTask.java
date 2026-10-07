@@ -24,6 +24,7 @@ import com.netflix.spinnaker.orca.api.pipeline.models.ExecutionStatus;
 import com.netflix.spinnaker.orca.api.pipeline.models.StageExecution;
 import com.netflix.spinnaker.orca.clouddriver.EcsNativeService;
 import com.netflix.spinnaker.orca.clouddriver.model.EcsServiceDeploymentStatus;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,6 +46,13 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
 
   private static final long BACKOFF_PERIOD = TimeUnit.SECONDS.toMillis(10);
   private static final long TIMEOUT = TimeUnit.HOURS.toMillis(1);
+  private static final String WAIT_FOR_LIFECYCLE_GATE = "ecsNativeWaitForLifecycleGate";
+  private static final String WAIT_FOR_STOPPED = "ecsNativeWaitForStopped";
+  private static final String LIFECYCLE_GATE_STATUS = "IN_PROGRESS";
+  // ECS pauses blue/green deployments at BAKE_TIME, which is the only stage accepted by
+  // ContinueServiceDeployment. Keep this explicit rather than treating arbitrary lifecycle stages
+  // as user-actionable; unknown future stages must continue polling.
+  private static final String LIFECYCLE_GATE_STAGE = "BAKE_TIME";
   private static final Set<String> TERMINAL_FAILURE_STATUSES =
       Set.of("ROLLBACK_SUCCESSFUL", "ROLLBACK_FAILED", "STOPPED", "FAILED");
 
@@ -70,7 +78,7 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
     }
     String region = resolveRegion(context);
     String serverGroupName = resolveServerGroupName(context, region);
-    String expectedServiceDeploymentArn = resolveExpectedServiceDeploymentArn(context);
+    String expectedServiceDeploymentArn = resolveExpectedServiceDeploymentArn(stage);
 
     if (account == null || region == null || serverGroupName == null) {
       throw new IllegalArgumentException(
@@ -117,6 +125,20 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
             .context("ecsNativeDeploymentStatus", status)
             .build();
       }
+      if (Boolean.TRUE.equals(context.get(WAIT_FOR_LIFECYCLE_GATE))) {
+        if (LIFECYCLE_GATE_STATUS.equals(serviceDeploymentStatus)
+            && LIFECYCLE_GATE_STAGE.equals(status.getLifecycleStage())) {
+          return TaskResult.builder(ExecutionStatus.SUCCEEDED)
+              .context("ecsNativeDeploymentStatus", status)
+              .build();
+        }
+      }
+      if (Boolean.TRUE.equals(context.get(WAIT_FOR_STOPPED))
+          && "STOPPED".equals(serviceDeploymentStatus)) {
+        return TaskResult.builder(ExecutionStatus.SUCCEEDED)
+            .context("ecsNativeDeploymentStatus", status)
+            .build();
+      }
       if (TERMINAL_FAILURE_STATUSES.contains(serviceDeploymentStatus)) {
         return TaskResult.builder(ExecutionStatus.TERMINAL)
             .context("ecsNativeDeploymentStatus", status)
@@ -137,9 +159,39 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
     }
   }
 
-  private static String resolveExpectedServiceDeploymentArn(Map<String, Object> context) {
-    String expected = (String) context.get(EXPECTED_SERVICE_DEPLOYMENT_ARN);
-    return expected != null ? expected : (String) context.get("expectedServiceDeploymentArn");
+  public static String resolveExpectedServiceDeploymentArn(StageExecution stage) {
+    Map<String, Object> context = stage.getContext();
+    Collection<String> references = stage.getRequisiteStageRefIds();
+    Object explicitReference = context.get("deploymentStageRefId");
+    if (explicitReference instanceof String && !((String) explicitReference).isBlank()) {
+      references = List.of((String) explicitReference);
+    }
+    if (references != null) {
+      for (String reference : references) {
+        Optional<StageExecution> precedingStage =
+            stage.getExecution().getStages().stream()
+                .filter(candidate -> reference.equals(candidate.getRefId()))
+                .findFirst();
+        if (precedingStage.isPresent()) {
+          String resolved = deploymentArn(precedingStage.get().getOutputs());
+          if (resolved == null) {
+            resolved = deploymentArn(precedingStage.get().getContext());
+          }
+          if (resolved != null) {
+            return resolved;
+          }
+        }
+      }
+    }
+    return deploymentArn(context);
+  }
+
+  private static String deploymentArn(Map<String, Object> values) {
+    Object expected = values.get(EXPECTED_SERVICE_DEPLOYMENT_ARN);
+    if (expected == null) {
+      expected = values.get("expectedServiceDeploymentArn");
+    }
+    return expected instanceof String && !((String) expected).isBlank() ? (String) expected : null;
   }
 
   private static String resolveRegion(Map<String, Object> context) {
