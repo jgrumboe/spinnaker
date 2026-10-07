@@ -103,7 +103,7 @@ public class EcsNativeUpdateServiceAtomicOperation
     }
 
     DeploymentConfiguration deploymentConfiguration =
-        buildDeploymentConfiguration(existingConfiguration);
+        EcsNativeDeploymentConfiguration.forUpdate(description, existingConfiguration);
     if (deploymentConfiguration != null) {
       requestBuilder.deploymentConfiguration(deploymentConfiguration);
     }
@@ -143,10 +143,5 @@ public class EcsNativeUpdateServiceAtomicOperation
       result.setDeployments(Collections.singleton(deployment));
     }
     return result;
-  }
-
-  private DeploymentConfiguration buildDeploymentConfiguration(
-      DeploymentConfiguration existingConfiguration) {
-    return EcsNativeDeploymentConfiguration.forUpdate(description, existingConfiguration);
   }
 }
