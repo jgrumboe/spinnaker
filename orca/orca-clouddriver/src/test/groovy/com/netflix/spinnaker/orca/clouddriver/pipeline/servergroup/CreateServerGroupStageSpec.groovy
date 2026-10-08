@@ -212,6 +212,44 @@ class CreateServerGroupStageSpec extends Specification {
   }
 
   @Unroll
+  def "sets ecsNativeWaitForLifecycleGate only for ecs-native BLUE_GREEN (cloudProvider=#cloudProvider, deploymentStrategy=#deploymentStrategy)"() {
+    given:
+    // basicTasks() sets the flag on the stage context as a side effect of building the graph, so the
+    // flag has to be read back from the context. If it is missing for blue/green, the wait task would
+    // poll for final SUCCESSFUL and never reach the Continue stage.
+    def dynamicConfigService = Mock(DynamicConfigService)
+    def stageForProvider = new CreateServerGroupStage(
+        Mock(FeaturesService) { areEntityTagsAvailable() >> false },
+        new RollbackClusterStage(),
+        new DestroyServerGroupStage(dynamicConfigService),
+        dynamicConfigService)
+
+    def stage = stage {
+      context = [
+        "application"       : "myapplication",
+        "account"           : "test",
+        "cloudProvider"     : cloudProvider,
+        "deploymentStrategy": deploymentStrategy,
+      ]
+    }
+
+    when:
+    stageForProvider.basicTasks(stage)
+
+    then:
+    stage.context.ecsNativeWaitForLifecycleGate == expectedGate
+
+    where:
+    cloudProvider | deploymentStrategy || expectedGate
+    "ecs-native"  | "BLUE_GREEN"       || true
+    "ecs-native"  | "blue_green"       || true
+    "ecs-native"  | "ROLLING"          || null
+    "ecs-native"  | null               || null
+    "ecs"         | "BLUE_GREEN"       || null
+    "aws"         | "BLUE_GREEN"       || null
+  }
+
+  @Unroll
   def "ecs-native rejects a non-None Spinnaker deployment strategy (strategy=#strategy)"() {
     given:
     def featuresService = Mock(FeaturesService) {
