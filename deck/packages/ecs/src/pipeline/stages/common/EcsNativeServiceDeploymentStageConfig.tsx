@@ -19,6 +19,29 @@ export function EcsNativeServiceDeploymentStageConfig({
         (candidate.clusters || []).some((cluster: any) => cluster.cloudProvider === ECS_NATIVE)),
   );
   const isStop = stage.type === 'ecsNativeStopServiceDeployment';
+  const isFixedAction = (value?: string) => value === 'CONTINUE' || value === 'ROLLBACK';
+  const [expressionMode, setExpressionMode] = React.useState<boolean>(
+    !!stage.lifecycleAction && !isFixedAction(stage.lifecycleAction),
+  );
+  const actionMode = expressionMode ? 'EXPRESSION' : stage.lifecycleAction || 'CONTINUE';
+  const upstreamJudgment = PipelineConfigService.getAllUpstreamDependencies(pipeline, stage).find(
+    (candidate) => candidate.type === 'manualJudgment',
+  );
+  const selectLifecycleAction = (mode: string) => {
+    if (mode !== 'EXPRESSION') {
+      setExpressionMode(false);
+      updateStageField({ lifecycleAction: mode });
+      return;
+    }
+    setExpressionMode(true);
+    if (!stage.lifecycleAction || isFixedAction(stage.lifecycleAction)) {
+      // Pre-fill an expression for the common case: a Manual Judgment with "continue"/"rollback" options.
+      const judgmentName = upstreamJudgment?.name || 'Approve release';
+      updateStageField({
+        lifecycleAction: `\${ #judgment('${judgmentName}') == 'continue' ? 'CONTINUE' : 'ROLLBACK' }`,
+      });
+    }
+  };
   const deploymentStageRefId = stage.deploymentStageRefId || stage.requisiteStageRefIds?.[0] || '';
 
   React.useEffect(() => {
@@ -108,16 +131,26 @@ export function EcsNativeServiceDeploymentStageConfig({
         <StageConfigField label="Action">
           <select
             className="form-control input-sm"
-            name="lifecycleAction"
-            onChange={(event) => updateStageField({ lifecycleAction: event.target.value })}
-            value={stage.lifecycleAction || 'CONTINUE'}
+            name="lifecycleActionMode"
+            onChange={(event) => selectLifecycleAction(event.target.value)}
+            value={actionMode}
           >
             <option value="CONTINUE">Continue (approve)</option>
             <option value="ROLLBACK">Roll back (reject)</option>
+            <option value="EXPRESSION">Expression (e.g. from a Manual Judgment)</option>
           </select>
+          {actionMode === 'EXPRESSION' && (
+            <input
+              className="form-control input-sm"
+              name="lifecycleAction"
+              onChange={(event) => updateStageField({ lifecycleAction: event.target.value })}
+              placeholder="${ #judgment('Approve release') == 'continue' ? 'CONTINUE' : 'ROLLBACK' }"
+              type="text"
+              value={stage.lifecycleAction || ''}
+            />
+          )}
           <span className="help-block">
-            Acts on the PAUSE hook configured on the deploy stage. Use an expression on this field to branch on a Manual
-            Judgment result.
+            Acts on the PAUSE hook configured on the deploy stage. The expression must evaluate to CONTINUE or ROLLBACK.
           </span>
         </StageConfigField>
       )}
