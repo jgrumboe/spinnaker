@@ -81,6 +81,21 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
     'STOPPED'              | ExecutionStatus.TERMINAL
   }
 
+  def 'resolves the ARN from the synthetic child of a Deck-authored deploy stage'() {
+    given:
+    def pipeline = PipelineExecutionImpl.newPipeline('orca')
+    def wrapper = new StageExecutionImpl(pipeline, 'deploy', 'Deploy', [:])
+    wrapper.refId = 'deploy-ref'
+    def child = new StageExecutionImpl(pipeline, 'createServerGroup', 'Deploy in eu-central-1', [:])
+    child.parentStageId = wrapper.id
+    child.outputs.ecsNativeExpectedServiceDeploymentArn = 'service-deployment-from-child'
+    pipeline.stages << wrapper << child
+    def stage = new StageExecutionImpl(pipeline, 'test', 'test', [requisiteStageRefIds: ['deploy-ref']])
+
+    expect:
+    WaitForEcsNativeServiceDeploymentTask.resolveExpectedServiceDeploymentArn(stage) == 'service-deployment-from-child'
+  }
+
   def 'resolves ARN from referenced deploy stage output before direct fallback'() {
     given:
     def stage = stageWithContext([

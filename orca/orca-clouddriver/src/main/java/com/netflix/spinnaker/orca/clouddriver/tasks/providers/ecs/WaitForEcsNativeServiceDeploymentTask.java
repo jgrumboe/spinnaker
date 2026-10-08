@@ -27,6 +27,7 @@ import com.netflix.spinnaker.orca.clouddriver.model.EcsServiceDeploymentStatus;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -195,6 +196,11 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
           if (resolved == null) {
             resolved = deploymentArn(precedingStage.get().getContext());
           }
+          if (resolved == null) {
+            // A Deck-authored "deploy" stage wraps one synthetic createServerGroup child per
+            // cluster; the ARN is written to that child's outputs, not to the wrapper.
+            resolved = deploymentArnFromChildren(stage, precedingStage.get());
+          }
           if (resolved != null) {
             return resolved;
           }
@@ -202,6 +208,19 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
       }
     }
     return deploymentArn(context);
+  }
+
+  private static String deploymentArnFromChildren(StageExecution stage, StageExecution parent) {
+    return stage.getExecution().getStages().stream()
+        .filter(candidate -> parent.getId().equals(candidate.getParentStageId()))
+        .map(
+            child -> {
+              String resolved = deploymentArn(child.getOutputs());
+              return resolved != null ? resolved : deploymentArn(child.getContext());
+            })
+        .filter(Objects::nonNull)
+        .reduce((first, second) -> second)
+        .orElse(null);
   }
 
   private static String deploymentArn(Map<String, Object> values) {
