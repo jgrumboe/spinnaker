@@ -4,8 +4,10 @@ import { EcsNativeServiceDeploymentStageConfig } from '../common/EcsNativeServic
 
 export function registerEcsNativeStopServiceDeploymentStage() {
   Registry.pipeline.registerStage({
-    provides: 'ecsNativeStopServiceDeployment',
-    cloudProvider: 'ecs-native',
+    key: 'ecsNativeStopServiceDeployment',
+    label: 'Stop ECS Native Service Deployment',
+    description: 'Stops a native ECS service deployment and rolls it back',
+    cloudProvider: 'ecs',
     component: EcsNativeServiceDeploymentStageConfig,
     accountExtractor: (stage) => [stage.context.credentials],
     configAccountExtractor: (stage) => [stage.credentials],

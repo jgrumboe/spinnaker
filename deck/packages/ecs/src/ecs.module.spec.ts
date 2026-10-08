@@ -53,13 +53,23 @@ describe('ECS package registration', () => {
     registerEcsPipelineStages();
     const nativeStages = Registry.pipeline
       .getStageTypes()
-      .filter((stage) => stage.cloudProvider === 'ecs-native')
-      .sort((left, right) => left.provides.localeCompare(right.provides));
-
-    expect(nativeStages.map((stage) => stage.provides)).toEqual([
+      .filter((stage) => stage.key?.startsWith('ecsNative'))
+      .sort((left, right) => left.key.localeCompare(right.key));
+    expect(nativeStages.map((stage) => stage.key)).toEqual([
       'ecsNativeContinueServiceDeployment',
       'ecsNativeStopServiceDeployment',
     ]);
+    // Stages with `provides` are provider implementations of a base stage and never appear in the type picker.
+    nativeStages.forEach((stage) => {
+      expect(stage.provides).toBeUndefined();
+      expect(stage.label).toBeTruthy();
+      expect(stage.description).toBeTruthy();
+    });
+    const pickerKeys = Registry.pipeline
+      .getConfigurableStageTypes([{ cloudProvider: 'ecs' } as any])
+      .map((stage) => stage.key);
+    expect(pickerKeys).toContain('ecsNativeContinueServiceDeployment');
+    expect(pickerKeys).toContain('ecsNativeStopServiceDeployment');
     nativeStages.forEach((stage) => {
       expect(stage.component).toEqual(jasmine.any(Function));
       expect(stage.validators).toEqual([
