@@ -162,6 +162,10 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
   public static String resolveExpectedServiceDeploymentArn(StageExecution stage) {
     Map<String, Object> context = stage.getContext();
     Collection<String> references = stage.getRequisiteStageRefIds();
+    Object contextReferences = stage.getContext().get("requisiteStageRefIds");
+    if (contextReferences instanceof Collection) {
+      references = ((Collection<?>) contextReferences).stream().map(Object::toString).toList();
+    }
     Object explicitReference = context.get("deploymentStageRefId");
     if (explicitReference instanceof String && !((String) explicitReference).isBlank()) {
       references = List.of((String) explicitReference);

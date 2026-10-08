@@ -20,7 +20,7 @@ import com.netflix.spinnaker.clouddriver.ecs.EcsNativeServiceTag
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeServiceDeploymentDescription
 import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider
-import com.netflix.spinnaker.clouddriver.test.TestCredential
+import com.netflix.spinnaker.clouddriver.ecs.TestCredential
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.ContinueServiceDeploymentRequest
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse

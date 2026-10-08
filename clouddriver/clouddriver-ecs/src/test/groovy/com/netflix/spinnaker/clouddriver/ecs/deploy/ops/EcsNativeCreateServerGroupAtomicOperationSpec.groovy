@@ -331,7 +331,8 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     given:
     def description = new EcsNativeCreateServerGroupDescription(
         application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
-        ecsClusterName: 'my-cluster', deploymentStrategy: 'BLUE_GREEN')
+        ecsClusterName: 'my-cluster', deploymentStrategy: 'BLUE_GREEN',
+        availabilityZones: ['us-west-1': ['us-west-1a']])
     def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
     operation.getAmazonEcsClient() >> ecs
     ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
@@ -350,7 +351,9 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     then:
     1 * ecs.updateService({ request ->
       request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
-    } as UpdateServiceRequest)
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName('mygreatapp-stack1-details2').currentServiceDeployment('arn:deployment').build())
+        .build()
   }
 
   def 'allows a stored blue/green strategy when redeploy omits the strategy'() {
@@ -369,16 +372,18 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
         .services(Service.builder().serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag())
             .deploymentConfiguration(DeploymentConfiguration.builder().strategy('BLUE_GREEN').build()).build())
         .build()
-    ecs.updateService(_) >> UpdateServiceResponse.builder()
-        .service(Service.builder().serviceName(serviceName).currentServiceDeployment('arn:deployment').build()).build()
 
     when:
     operation.operate([])
 
     then:
-    1 * ecs.updateService({ request ->
-      request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
-    } as UpdateServiceRequest)
+    // The stored strategy must survive: either no deploymentConfiguration is sent (ECS keeps it),
+    // or the one sent is derived from the stored BLUE_GREEN configuration.
+    1 * ecs.updateService({ UpdateServiceRequest request ->
+      request.deploymentConfiguration() == null ||
+          request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+    } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
+        .service(Service.builder().serviceName(serviceName).currentServiceDeployment('arn:deployment').build()).build()
   }
 
   def 'explicitly disables ECS Exec on an existing enabled service'() {

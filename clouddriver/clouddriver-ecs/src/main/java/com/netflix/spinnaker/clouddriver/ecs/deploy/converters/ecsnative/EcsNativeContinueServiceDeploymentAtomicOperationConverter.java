@@ -33,7 +33,7 @@ public class EcsNativeContinueServiceDeploymentAtomicOperationConverter
     return new EcsNativeContinueServiceDeploymentAtomicOperation(convertDescription(input));
   }
 
-  private EcsNativeServiceDeploymentDescription convertDescription(Map input) {
+  public EcsNativeServiceDeploymentDescription convertDescription(Map input) {
     EcsNativeServiceDeploymentDescription converted =
         getObjectMapper().convertValue(input, EcsNativeServiceDeploymentDescription.class);
     converted.setCredentials(getCredentialsObject(input.get("credentials").toString()));

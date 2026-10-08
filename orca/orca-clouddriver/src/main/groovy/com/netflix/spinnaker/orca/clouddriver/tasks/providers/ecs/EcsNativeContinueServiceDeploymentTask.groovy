@@ -29,7 +29,6 @@ class EcsNativeContinueServiceDeploymentTask extends AbstractServerGroupTask {
   @Override
   String getServerGroupAction() { OPERATION }
 
-  @Override
   Map convert(StageExecution stage) {
     Map operation = super.convert(stage)
     String expectedArn = WaitForEcsNativeServiceDeploymentTask.resolveExpectedServiceDeploymentArn(stage)

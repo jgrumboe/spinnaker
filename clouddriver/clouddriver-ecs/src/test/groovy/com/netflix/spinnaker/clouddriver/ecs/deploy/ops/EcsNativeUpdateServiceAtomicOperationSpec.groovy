@@ -190,7 +190,7 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
   }
 
 
-  void 'rejects a stored blue/green strategy when update omits the strategy before any AWS write'() {
+  void 'allows a stored blue/green strategy when update omits the strategy'() {
     given:
     def credentials = TestCredential.named('test', [:])
     def serviceName = 'myapp-stack-detail'
@@ -220,7 +220,7 @@ class EcsNativeUpdateServiceAtomicOperationSpec extends CommonAtomicOperation {
 
     then:
     1 * ecs.updateService({ UpdateServiceRequest request ->
-      request.deploymentConfiguration().strategyAsString() == 'BLUE_GREEN'
+      request.deploymentConfiguration() == null
     } as UpdateServiceRequest) >> UpdateServiceResponse.builder()
         .service(Service.builder().serviceName(serviceName).build())
         .build()

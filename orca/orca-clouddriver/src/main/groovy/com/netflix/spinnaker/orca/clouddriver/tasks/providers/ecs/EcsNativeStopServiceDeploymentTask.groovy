@@ -35,8 +35,7 @@ class EcsNativeStopServiceDeploymentTask extends AbstractServerGroupTask {
     [(WAIT_FOR_STOPPED): true]
   }
 
-  @Override
-  Map convert(stage) {
+  Map convert(StageExecution stage) {
     Map operation = super.convert(stage)
     String expectedArn = WaitForEcsNativeServiceDeploymentTask.resolveExpectedServiceDeploymentArn(stage)
     if (expectedArn) {
