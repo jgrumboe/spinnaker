@@ -48,10 +48,12 @@ deployment alarms, bake time, and the ECS `ROLLING` or `BLUE_GREEN` strategy. Bl
 shift fields are sent when configured and are validated before the AWS request. The end-to-end
 lifecycle uses explicit Continue and Stop stages. Deck references the preceding native deploy stage
 (with the ARN field retained only as an API fallback), and Orca resolves and pins the exact deployment
-ARN from that stage's outputs/context. For `BLUE_GREEN`, the deploy wait succeeds at ECS status
-`IN_PROGRESS` and lifecycle stage `BAKE_TIME`; Continue then issues the exact
-`ContinueServiceDeployment` request and waits for `SUCCESSFUL`. Stop issues the exact
-`StopServiceDeployment` request and polls the same ARN until `STOPPED` or another terminal status.
+ARN from that stage's outputs/context. For `BLUE_GREEN`, an opt-in PAUSE lifecycle hook
+(`lifecyclePauseStage`) makes the deploy wait succeed once the hook is `AWAITING_ACTION`; Continue then
+resolves the hook id and issues the exact `ContinueServiceDeployment` request with `CONTINUE` or
+`ROLLBACK` and waits for `SUCCESSFUL` (or the requested rollback). Stop issues the exact
+`StopServiceDeployment` request (stop type `ROLLBACK`; `ABORT` is rejected by ECS) and polls the same ARN until the requested
+rollback completes.
 Stop is never added as an automatic deployment-failure action.
 
 Create and update return the exact ECS service-deployment ARN in `DeploymentResult` metadata;

@@ -48,11 +48,9 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
   private static final long TIMEOUT = TimeUnit.HOURS.toMillis(1);
   private static final String WAIT_FOR_LIFECYCLE_GATE = "ecsNativeWaitForLifecycleGate";
   private static final String WAIT_FOR_STOPPED = "ecsNativeWaitForStopped";
+  private static final String ACCEPT_ROLLBACK = "ecsNativeAcceptRollback";
   private static final String LIFECYCLE_GATE_STATUS = "IN_PROGRESS";
-  // ECS pauses blue/green deployments at BAKE_TIME, which is the only stage accepted by
-  // ContinueServiceDeployment. Keep this explicit rather than treating arbitrary lifecycle stages
-  // as user-actionable; unknown future stages must continue polling.
-  private static final String LIFECYCLE_GATE_STAGE = "BAKE_TIME";
+  private static final String HOOK_AWAITING_ACTION = "AWAITING_ACTION";
   private static final Set<String> TERMINAL_FAILURE_STATUSES =
       Set.of("ROLLBACK_SUCCESSFUL", "ROLLBACK_FAILED", "STOPPED", "FAILED");
 
@@ -125,13 +123,23 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
             .context("ecsNativeDeploymentStatus", status)
             .build();
       }
-      if (Boolean.TRUE.equals(context.get(WAIT_FOR_LIFECYCLE_GATE))) {
-        if (LIFECYCLE_GATE_STATUS.equals(serviceDeploymentStatus)
-            && LIFECYCLE_GATE_STAGE.equals(status.getLifecycleStage())) {
-          return TaskResult.builder(ExecutionStatus.SUCCEEDED)
-              .context("ecsNativeDeploymentStatus", status)
-              .build();
-        }
+      // A configured PAUSE lifecycle hook is the only point where ECS waits for a Continue. The
+      // deploy stage is done once the hook awaits action; ECS applies the hook's timeout action
+      // if nobody acts, so a downstream Continue stage must exist.
+      if (Boolean.TRUE.equals(context.get(WAIT_FOR_LIFECYCLE_GATE))
+          && LIFECYCLE_GATE_STATUS.equals(serviceDeploymentStatus)
+          && hasHookAwaitingAction(status)) {
+        return TaskResult.builder(ExecutionStatus.SUCCEEDED)
+            .context("ecsNativeDeploymentStatus", status)
+            .build();
+      }
+      // A user-requested rollback (Continue with ROLLBACK, Stop) legitimately ends in
+      // ROLLBACK_SUCCESSFUL.
+      if ("ROLLBACK_SUCCESSFUL".equals(serviceDeploymentStatus)
+          && Boolean.TRUE.equals(context.get(ACCEPT_ROLLBACK))) {
+        return TaskResult.builder(ExecutionStatus.SUCCEEDED)
+            .context("ecsNativeDeploymentStatus", status)
+            .build();
       }
       if (Boolean.TRUE.equals(context.get(WAIT_FOR_STOPPED))
           && "STOPPED".equals(serviceDeploymentStatus)) {
@@ -157,6 +165,12 @@ public class WaitForEcsNativeServiceDeploymentTask implements OverridableTimeout
       }
       throw e;
     }
+  }
+
+  private static boolean hasHookAwaitingAction(EcsServiceDeploymentStatus status) {
+    return status.getLifecycleHookDetails() != null
+        && status.getLifecycleHookDetails().stream()
+            .anyMatch(hook -> HOOK_AWAITING_ACTION.equals(hook.getStatus()));
   }
 
   public static String resolveExpectedServiceDeploymentArn(StageExecution stage) {

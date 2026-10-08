@@ -29,7 +29,16 @@ import { EcsServerGroupCommandBuilder } from './serverGroup/configure/serverGrou
 import { EcsCloneServerGroupModal } from './serverGroup/configure/wizard/EcsCloneServerGroupModal';
 import { EcsServerGroupActions } from './serverGroup/details/EcsServerGroupActions';
 import { ecsServerGroupDetailsGetter } from './serverGroup/details/ecsServerGroupDetailsGetter';
-import { EcsBuildInfoSection, EcsCapacitySection, EcsDeploymentSection, EcsEnvironmentVariablesSection, EcsFirewallsSection, EcsHealthSection, EcsScalingPoliciesSection, EcsTaskDefinitionSection } from './serverGroup/details/sections/EcsServerGroupDetailsSections';
+import {
+  EcsBuildInfoSection,
+  EcsCapacitySection,
+  EcsDeploymentSection,
+  EcsEnvironmentVariablesSection,
+  EcsFirewallsSection,
+  EcsHealthSection,
+  EcsScalingPoliciesSection,
+  EcsTaskDefinitionSection,
+} from './serverGroup/details/sections/EcsServerGroupDetailsSections';
 import { EcsServerGroupEventsSection } from './serverGroup/details/sections/EcsServerGroupEventsSection';
 import { EcsServerGroupInformationSection } from './serverGroup/details/sections/EcsServerGroupInformationSection';
 import { EcsServerGroupTransformer } from './serverGroup/serverGroup.transformer';

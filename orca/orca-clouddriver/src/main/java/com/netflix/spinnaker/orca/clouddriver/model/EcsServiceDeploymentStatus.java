@@ -16,6 +16,7 @@
 
 package com.netflix.spinnaker.orca.clouddriver.model;
 
+import java.util.List;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -35,10 +36,21 @@ public class EcsServiceDeploymentStatus {
   String status;
   String statusReason;
   String lifecycleStage;
+  List<LifecycleHook> lifecycleHookDetails;
   String rolloutState;
   String rolloutStateReason;
   Long createdAt;
   Long startedAt;
   Long finishedAt;
   Long updatedAt;
+
+  @Data
+  @NoArgsConstructor
+  public static class LifecycleHook {
+    String hookId;
+    String status;
+    String targetType;
+    Long expiresAt;
+    String timeoutAction;
+  }
 }

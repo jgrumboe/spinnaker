@@ -136,6 +136,9 @@ export interface IEcsServerGroupCommand {
   minimumHealthyPercent?: number;
   maximumPercent?: number;
   bakeTimeInMinutes?: number;
+  lifecyclePauseStage?: string;
+  lifecyclePauseTimeoutMinutes?: number;
+  lifecyclePauseTimeoutAction?: string;
   alternateTargetGroupArn?: string;
   productionListenerRule?: string;
   testListenerRule?: string;

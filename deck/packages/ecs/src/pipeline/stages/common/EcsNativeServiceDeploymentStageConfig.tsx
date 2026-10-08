@@ -5,11 +5,17 @@ import { AccountSelectInput, AccountService, PipelineConfigService, StageConfigF
 
 const ECS_NATIVE = 'ecs-native';
 
-export function EcsNativeServiceDeploymentStageConfig({ application, pipeline, stage, updateStageField }: IStageConfigProps) {
+export function EcsNativeServiceDeploymentStageConfig({
+  application,
+  pipeline,
+  stage,
+  updateStageField,
+}: IStageConfigProps) {
   const [accounts, setAccounts] = React.useState<IAccount[]>([]);
   const upstreamDeployStages = PipelineConfigService.getAllUpstreamDependencies(pipeline, stage).filter(
     (candidate) => candidate.type === 'createServerGroup' && candidate.cloudProvider === ECS_NATIVE,
   );
+  const isStop = stage.type === 'stopEcsNativeServiceDeployment';
   const deploymentStageRefId = stage.deploymentStageRefId || stage.requisiteStageRefIds?.[0] || '';
 
   React.useEffect(() => {
@@ -89,6 +95,29 @@ export function EcsNativeServiceDeploymentStageConfig({ application, pipeline, s
         </select>
         <span className="help-block">The deploy stage supplies the exact ECS service-deployment ARN.</span>
       </StageConfigField>
+      {isStop ? (
+        <StageConfigField label="Stop behavior">
+          <span className="help-block">
+            Stops the deployment and rolls the service back to its previous revision (ECS stop type ROLLBACK).
+          </span>
+        </StageConfigField>
+      ) : (
+        <StageConfigField label="Action">
+          <select
+            className="form-control input-sm"
+            name="lifecycleAction"
+            onChange={(event) => updateStageField({ lifecycleAction: event.target.value })}
+            value={stage.lifecycleAction || 'CONTINUE'}
+          >
+            <option value="CONTINUE">Continue (approve)</option>
+            <option value="ROLLBACK">Roll back (reject)</option>
+          </select>
+          <span className="help-block">
+            Acts on the PAUSE hook configured on the deploy stage. Use an expression on this field to branch on a Manual
+            Judgment result.
+          </span>
+        </StageConfigField>
+      )}
       <StageConfigField label="Expected service deployment ARN (legacy fallback)">
         <input
           className="form-control input-sm"

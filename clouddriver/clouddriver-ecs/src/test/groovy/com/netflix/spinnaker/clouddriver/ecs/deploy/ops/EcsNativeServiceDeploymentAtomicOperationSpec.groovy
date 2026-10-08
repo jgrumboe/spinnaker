@@ -23,10 +23,17 @@ import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider
 import com.netflix.spinnaker.clouddriver.ecs.TestCredential
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.ContinueServiceDeploymentRequest
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookAction
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookDetail
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookStatus
+import software.amazon.awssdk.services.ecs.model.DescribeServiceDeploymentsResponse
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
+import software.amazon.awssdk.services.ecs.model.ServiceDeployment
+import software.amazon.awssdk.services.ecs.model.StopServiceDeploymentStopType
 import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.StopServiceDeploymentRequest
 import spock.lang.Specification
+import spock.lang.Unroll
 
 class EcsNativeServiceDeploymentAtomicOperationSpec extends Specification {
 
@@ -52,34 +59,77 @@ class EcsNativeServiceDeploymentAtomicOperationSpec extends Specification {
 
     then:
     1 * ecs.stopServiceDeployment({ StopServiceDeploymentRequest request ->
-      request.serviceDeploymentArn() == 'arn:deployment:7'
+      request.serviceDeploymentArn() == 'arn:deployment:7' &&
+        request.stopType() == StopServiceDeploymentStopType.ROLLBACK
     } as StopServiceDeploymentRequest)
   }
 
-  def 'continues only the exact requested service deployment ARN'() {
+  @Unroll
+  def 'continue sends the awaiting hook id and action #expectedAction (lifecycleAction=#lifecycleAction)'() {
     given:
-    def credentials = TestCredential.named('test', [:])
     def ecs = Mock(EcsClient)
-    def provider = Mock(AmazonClientProvider)
-    def operation = new EcsNativeContinueServiceDeploymentAtomicOperation(new EcsNativeServiceDeploymentDescription(
-      credentials: credentials,
-      region: 'us-west-2',
-      ecsClusterName: 'cluster-arn',
-      serverGroupName: 'service',
-      ecsNativeExpectedServiceDeploymentArn: 'arn:deployment:7'
-    ))
-    operation.amazonClientProvider = provider
-    provider.getAmazonEcsV2(_, 'us-west-2') >> ecs
-    ecs.describeServices(_) >> DescribeServicesResponse.builder()
-      .services(Service.builder().serviceName('service').tags(EcsNativeServiceTag.tag()).build()).build()
+    def operation = lifecycleOperation(new EcsNativeContinueServiceDeploymentAtomicOperation(
+      description(lifecycleAction: lifecycleAction)), ecs)
 
     when:
     operation.operate([])
 
     then:
+    1 * ecs.describeServiceDeployments(_) >> DescribeServiceDeploymentsResponse.builder()
+      .serviceDeployments(ServiceDeployment.builder()
+        .serviceDeploymentArn('arn:deployment:7')
+        .lifecycleHookDetails(
+          DeploymentLifecycleHookDetail.builder().hookId('done-hook').status(DeploymentLifecycleHookStatus.SUCCEEDED).build(),
+          DeploymentLifecycleHookDetail.builder().hookId('pause-hook').status(DeploymentLifecycleHookStatus.AWAITING_ACTION).build())
+        .build())
+      .build()
     1 * ecs.continueServiceDeployment({ ContinueServiceDeploymentRequest request ->
-      request.serviceDeploymentArn() == 'arn:deployment:7'
+      request.serviceDeploymentArn() == 'arn:deployment:7' &&
+        request.hookId() == 'pause-hook' &&
+        request.action() == expectedAction
     } as ContinueServiceDeploymentRequest)
+
+    where:
+    lifecycleAction | expectedAction
+    null            | DeploymentLifecycleHookAction.CONTINUE
+    'continue'      | DeploymentLifecycleHookAction.CONTINUE
+    'ROLLBACK'      | DeploymentLifecycleHookAction.ROLLBACK
+  }
+
+  def 'continue fails closed when no hook awaits action'() {
+    given:
+    def ecs = Mock(EcsClient)
+    def operation = lifecycleOperation(new EcsNativeContinueServiceDeploymentAtomicOperation(description([:])), ecs)
+
+    when:
+    operation.operate([])
+
+    then:
+    1 * ecs.describeServiceDeployments(_) >> DescribeServiceDeploymentsResponse.builder()
+      .serviceDeployments(ServiceDeployment.builder().serviceDeploymentArn('arn:deployment:7').build())
+      .build()
+    def e = thrown(IllegalStateException)
+    e.message.contains('no lifecycle hook awaiting action')
+    0 * ecs.continueServiceDeployment(_)
+  }
+
+  private static EcsNativeServiceDeploymentDescription description(Map overrides) {
+    new EcsNativeServiceDeploymentDescription([
+      credentials: TestCredential.named('test', [:]),
+      region: 'us-west-2',
+      ecsClusterName: 'cluster-arn',
+      serverGroupName: 'service',
+      ecsNativeExpectedServiceDeploymentArn: 'arn:deployment:7'
+    ] + overrides)
+  }
+
+  private lifecycleOperation(AbstractEcsNativeServiceDeploymentAtomicOperation operation, EcsClient ecs) {
+    def provider = Mock(AmazonClientProvider)
+    operation.amazonClientProvider = provider
+    provider.getAmazonEcsV2(_, 'us-west-2') >> ecs
+    ecs.describeServices(_) >> DescribeServicesResponse.builder()
+      .services(Service.builder().serviceName('service').tags(EcsNativeServiceTag.tag()).build()).build()
+    operation
   }
 
   def 'rejects a lifecycle request without the pinned ARN before an AWS write'() {

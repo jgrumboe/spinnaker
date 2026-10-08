@@ -29,6 +29,12 @@ class EcsNativeContinueServiceDeploymentTask extends AbstractServerGroupTask {
   @Override
   String getServerGroupAction() { OPERATION }
 
+  @Override
+  Map<String, Object> getAdditionalContext(StageExecution stage, Map operation) {
+    // Rejecting the paused deployment is a requested outcome, so its rollback is not a failure.
+    'ROLLBACK' == stage.context.lifecycleAction?.toString()?.toUpperCase() ? [ecsNativeAcceptRollback: true] : [:]
+  }
+
   Map convert(StageExecution stage) {
     Map operation = super.convert(stage)
     String expectedArn = WaitForEcsNativeServiceDeploymentTask.resolveExpectedServiceDeploymentArn(stage)

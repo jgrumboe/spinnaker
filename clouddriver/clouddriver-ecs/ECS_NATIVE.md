@@ -33,9 +33,12 @@ circuit-breaker rollback, deployment alarms, bake time, and `ROLLING`/`BLUE_GREE
 Blue/green ALB traffic-shift configuration is validated and included when supplied. Native blue/green
 pipelines use explicit Continue and Stop stages: those stages reference the preceding deploy stage,
 resolve its exact service-deployment ARN, and never infer identity from the service name. The deploy
-waits at ECS's `IN_PROGRESS`/`BAKE_TIME` lifecycle gate; Continue sends the exact Continue request and
-then waits for `SUCCESSFUL`. Stop sends the exact Stop request and waits for that deployment to reach
-`STOPPED` or another terminal status. Rolling deploys continue to wait for `SUCCESSFUL` directly.
+waits for `SUCCESSFUL` directly unless the opt-in `lifecyclePauseStage` is set. That adds an ECS PAUSE
+lifecycle hook (with explicit `lifecyclePauseTimeoutMinutes` and a `ROLLBACK`-by-default timeout action)
+and the deploy stage succeeds once the hook is `AWAITING_ACTION`. A downstream Continue stage then sends
+the hook id and `CONTINUE` or `ROLLBACK` (a requested rollback ends the stage successfully). If no
+Continue stage exists, ECS applies the timeout action on its own. Stop sends the exact Stop request
+(always stop type `ROLLBACK`; verified on real ECS that `ABORT` is rejected) and waits for the rollback to finish.
 
 Orca waits for the exact service-deployment ARN returned in the ECS create/update
 `DeploymentResult` metadata. That ARN is the rollout identity consumed by Orca; it is not inferred
@@ -79,7 +82,7 @@ service identity and ownership decision, so Deck exposes the limitation and the 
 rejects the operation rather than silently using classic versioned-service behavior. Native `BLUE_GREEN` lifecycle controls are available through explicit Continue/Stop stages. Deck
 stores a reference to the preceding native deploy stage; the opaque ARN field remains only as a
 backward-compatible API fallback. Orca resolves the ARN from that stage's outputs/context, pins
-all lifecycle requests to it, and uses `IN_PROGRESS` plus `BAKE_TIME` as the explicit ECS lifecycle
+all lifecycle requests to it, and uses a PAUSE hook in `AWAITING_ACTION` as the explicit ECS lifecycle
 gate before Continue. Stop never runs automatically on deployment failure.
 
 ## Verification boundary

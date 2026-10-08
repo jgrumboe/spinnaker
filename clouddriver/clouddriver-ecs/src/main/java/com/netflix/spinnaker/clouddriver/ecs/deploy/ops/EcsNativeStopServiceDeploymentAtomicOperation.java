@@ -18,6 +18,7 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeServiceDeploymentDescription;
 import software.amazon.awssdk.services.ecs.model.StopServiceDeploymentRequest;
+import software.amazon.awssdk.services.ecs.model.StopServiceDeploymentStopType;
 
 /** Explicitly stops one pinned native ECS service deployment. */
 public class EcsNativeStopServiceDeploymentAtomicOperation
@@ -30,10 +31,14 @@ public class EcsNativeStopServiceDeploymentAtomicOperation
 
   @Override
   protected void transition(String serviceDeploymentArn) {
+    // ABORT is in the API schema but real ECS rejects it (UnsupportedFeatureException); ROLLBACK is
+    // the
+    // only supported stop type and works even when rollback was not configured.
     getAmazonEcsClient()
         .stopServiceDeployment(
             StopServiceDeploymentRequest.builder()
                 .serviceDeploymentArn(serviceDeploymentArn)
+                .stopType(StopServiceDeploymentStopType.ROLLBACK)
                 .build());
   }
 }

@@ -17,9 +17,20 @@
 package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeServiceDeploymentDescription;
+import org.apache.commons.lang3.StringUtils;
+import software.amazon.awssdk.services.ecs.EcsClient;
 import software.amazon.awssdk.services.ecs.model.ContinueServiceDeploymentRequest;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookAction;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookDetail;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookStatus;
+import software.amazon.awssdk.services.ecs.model.DescribeServiceDeploymentsRequest;
+import software.amazon.awssdk.services.ecs.model.ServiceDeployment;
 
-/** Explicitly continues one pinned native ECS service deployment. */
+/**
+ * Acts on the PAUSE lifecycle hook of one pinned native ECS service deployment: resumes it, or
+ * rejects it with a rollback. ECS requires the hook id, which is resolved from the deployment's
+ * hook that is currently awaiting action.
+ */
 public class EcsNativeContinueServiceDeploymentAtomicOperation
     extends AbstractEcsNativeServiceDeploymentAtomicOperation {
 
@@ -30,10 +41,48 @@ public class EcsNativeContinueServiceDeploymentAtomicOperation
 
   @Override
   protected void transition(String serviceDeploymentArn) {
-    getAmazonEcsClient()
-        .continueServiceDeployment(
-            ContinueServiceDeploymentRequest.builder()
-                .serviceDeploymentArn(serviceDeploymentArn)
-                .build());
+    String actionName =
+        StringUtils.defaultIfBlank(description.getLifecycleAction(), "CONTINUE").toUpperCase();
+    if (!StringUtils.equalsAny(actionName, "CONTINUE", "ROLLBACK")) {
+      throw new IllegalArgumentException("lifecycleAction must be CONTINUE or ROLLBACK");
+    }
+    EcsClient ecs = getAmazonEcsClient();
+    ecs.continueServiceDeployment(
+        ContinueServiceDeploymentRequest.builder()
+            .serviceDeploymentArn(serviceDeploymentArn)
+            .hookId(awaitingHookId(ecs, serviceDeploymentArn))
+            .action(DeploymentLifecycleHookAction.fromValue(actionName))
+            .build());
+  }
+
+  private static String awaitingHookId(EcsClient ecs, String serviceDeploymentArn) {
+    ServiceDeployment deployment =
+        ecs
+            .describeServiceDeployments(
+                DescribeServiceDeploymentsRequest.builder()
+                    .serviceDeploymentArns(serviceDeploymentArn)
+                    .build())
+            .serviceDeployments()
+            .stream()
+            .filter(candidate -> serviceDeploymentArn.equals(candidate.serviceDeploymentArn()))
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "Service deployment " + serviceDeploymentArn + " was not found"));
+    return deployment.lifecycleHookDetails().stream()
+        .filter(hook -> hook.status() == DeploymentLifecycleHookStatus.AWAITING_ACTION)
+        .map(DeploymentLifecycleHookDetail::hookId)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "Service deployment "
+                        + serviceDeploymentArn
+                        + " has no lifecycle hook awaiting action (status="
+                        + deployment.statusAsString()
+                        + ", stage="
+                        + deployment.lifecycleStageAsString()
+                        + "); enable lifecyclePauseStage on the deploy stage"));
   }
 }

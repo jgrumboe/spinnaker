@@ -99,8 +99,19 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
 
     expect:
     // Without this flag the wait would treat STOPPED as a terminal failure of the deployment.
-    new EcsNativeStopServiceDeploymentTask().getAdditionalContext(stopStage, [:]) == [ecsNativeWaitForStopped: true]
+    new EcsNativeStopServiceDeploymentTask().getAdditionalContext(stopStage, [:]) ==
+      [ecsNativeWaitForStopped: true, ecsNativeAcceptRollback: true]
     new EcsNativeContinueServiceDeploymentTask().getAdditionalContext(continueStage, [:]) == [:]
+  }
+
+  def 'a requested Continue rollback is an accepted outcome'() {
+    given:
+    def pipeline = PipelineExecutionImpl.newPipeline('orca')
+    def rejectContinue = lifecycleStage(pipeline, 'continueEcsNativeServiceDeployment', 'continue-ref')
+    rejectContinue.context.lifecycleAction = 'rollback'
+
+    expect:
+    new EcsNativeContinueServiceDeploymentTask().getAdditionalContext(rejectContinue, [:]) == [ecsNativeAcceptRollback: true]
   }
 
   def 'continue and stop both resolve the same ARN from the referenced deploy stage'() {

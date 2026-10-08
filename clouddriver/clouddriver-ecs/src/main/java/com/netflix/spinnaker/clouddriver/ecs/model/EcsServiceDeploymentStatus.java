@@ -16,6 +16,7 @@
 
 package com.netflix.spinnaker.clouddriver.ecs.model;
 
+import java.util.List;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -36,6 +37,7 @@ public class EcsServiceDeploymentStatus {
   String status;
   String statusReason;
   String lifecycleStage;
+  List<LifecycleHook> lifecycleHookDetails;
 
   // Kept for compatibility with existing Deck/status consumers. These mirror status fields.
   String rolloutState;
@@ -45,4 +47,15 @@ public class EcsServiceDeploymentStatus {
   Long startedAt;
   Long finishedAt;
   Long updatedAt;
+
+  /** One lifecycle hook of the deployment, e.g. a PAUSE hook awaiting action. */
+  @Data
+  @NoArgsConstructor
+  public static class LifecycleHook {
+    String hookId;
+    String status;
+    String targetType;
+    Long expiresAt;
+    String timeoutAction;
+  }
 }

@@ -53,9 +53,9 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
         <div style={{ color: '#666' }}>
           <p>
             <em>
-              When enabled, this deploy rolls out through ECS&apos;s supported native ROLLING lifecycle (durable service,
-              deployment alarms, and bake time) instead of Spinnaker&apos;s red/black orchestration. Blue/Green is
-              unavailable until Orca and Deck model ECS lifecycle actions. The account, cluster, task definition, and
+              When enabled, this deploy rolls out through ECS&apos;s supported native ROLLING lifecycle (durable
+              service, deployment alarms, and bake time) instead of Spinnaker&apos;s red/black orchestration. Blue/Green
+              is unavailable until Orca and Deck model ECS lifecycle actions. The account, cluster, task definition, and
               networking configured elsewhere in this wizard are unchanged.
             </em>
           </p>
@@ -142,9 +142,9 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
                 <option value="ROLLING">Rolling</option>
                 <option value="BLUE_GREEN">Blue/Green</option>
               </select>
-                <span className="help-block">
-                  Blue/Green uses explicit Continue and Stop service-deployment stages with the exact ECS deployment ARN.
-                </span>
+              <span className="help-block">
+                Blue/Green uses explicit Continue and Stop service-deployment stages with the exact ECS deployment ARN.
+              </span>
             </div>
           </div>
 
@@ -213,6 +213,79 @@ export const NativeDeploymentSettings = ({ command, onFieldChange }: IEcsWizardP
 
           {isBlueGreen && (
             <>
+              <div className="form-group">
+                <div className="sm-label-left">
+                  <b>Pause for approval (optional)</b> <HelpField id="ecs.native.lifecyclePause" />
+                </div>
+                <div className="col-md-12">
+                  <span className="help-block" style={{ marginLeft: '0' }}>
+                    ECS pauses the deployment at the chosen stage until a downstream &quot;Continue ECS Native Service
+                    Deployment&quot; stage acts on it. Without one, ECS applies the timeout action by itself and this
+                    deploy stage still reports success.
+                  </span>
+                </div>
+              </div>
+              <div className="form-group">
+                <div className="col-md-5 sm-label-right">Pause stage</div>
+                <div className="col-md-5">
+                  <select
+                    aria-label="Pause stage"
+                    className="form-control input-sm"
+                    data-test-id="NativeDeployment.lifecyclePauseStage"
+                    onChange={(event) => onFieldChange('lifecyclePauseStage', event.target.value || null)}
+                    value={command.lifecyclePauseStage || ''}
+                  >
+                    <option value="">No pause</option>
+                    <option value="POST_SCALE_UP">After scale up</option>
+                    <option value="POST_TEST_TRAFFIC_SHIFT">After test traffic shift</option>
+                    <option value="PRE_PRODUCTION_TRAFFIC_SHIFT">Before production traffic shift</option>
+                    <option value="POST_PRODUCTION_TRAFFIC_SHIFT">After production traffic shift</option>
+                  </select>
+                </div>
+              </div>
+              {command.lifecyclePauseStage && (
+                <>
+                  <div className="form-group">
+                    <div className="col-md-5 sm-label-right">Pause timeout (minutes)</div>
+                    <div className="col-md-2">
+                      <input
+                        aria-label="Pause timeout in minutes"
+                        className="form-control input-sm no-spel"
+                        data-test-id="NativeDeployment.lifecyclePauseTimeoutMinutes"
+                        min="1"
+                        onChange={(event) =>
+                          onFieldChange(
+                            'lifecyclePauseTimeoutMinutes',
+                            event.target.value === '' ? null : Number(event.target.value),
+                          )
+                        }
+                        type="number"
+                        value={command.lifecyclePauseTimeoutMinutes ?? ''}
+                      />
+                    </div>
+                    <div className="col-md-12">
+                      <span className="help-block" style={{ marginLeft: '0' }}>
+                        Must be longer than any Manual Judgment timeout in front of the Continue stage.
+                      </span>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <div className="col-md-5 sm-label-right">If nobody acts before the timeout</div>
+                    <div className="col-md-5">
+                      <select
+                        aria-label="Pause timeout action"
+                        className="form-control input-sm"
+                        data-test-id="NativeDeployment.lifecyclePauseTimeoutAction"
+                        onChange={(event) => onFieldChange('lifecyclePauseTimeoutAction', event.target.value)}
+                        value={command.lifecyclePauseTimeoutAction || 'ROLLBACK'}
+                      >
+                        <option value="ROLLBACK">Roll back (safe default)</option>
+                        <option value="CONTINUE">Continue</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="form-group">
                 <div className="sm-label-left">
                   <b>ALB traffic shift {albShiftRequired ? '(required)' : '(optional)'}</b>{' '}

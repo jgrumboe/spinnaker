@@ -32,7 +32,8 @@ class EcsNativeStopServiceDeploymentTask extends AbstractServerGroupTask {
 
   @Override
   Map<String, Object> getAdditionalContext(StageExecution stage, Map operation) {
-    [(WAIT_FOR_STOPPED): true]
+    // Stop uses ROLLBACK, which ends in ROLLBACK_SUCCESSFUL: the requested outcome.
+    [(WAIT_FOR_STOPPED): true, ecsNativeAcceptRollback: true]
   }
 
   Map convert(StageExecution stage) {

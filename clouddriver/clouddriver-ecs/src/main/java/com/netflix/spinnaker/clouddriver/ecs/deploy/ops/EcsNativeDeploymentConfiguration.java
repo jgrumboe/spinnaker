@@ -18,13 +18,27 @@ package com.netflix.spinnaker.clouddriver.ecs.deploy.ops;
 
 import com.netflix.spinnaker.clouddriver.ecs.deploy.description.EcsNativeDeploymentSettings;
 import java.util.List;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.services.ecs.model.DeploymentAlarms;
 import software.amazon.awssdk.services.ecs.model.DeploymentCircuitBreaker;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHook;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookAction;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookStage;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookTargetType;
+import software.amazon.awssdk.services.ecs.model.DeploymentLifecycleHookTimeoutConfiguration;
 
 /** Builds native ECS deployment settings consistently for create and update requests. */
 final class EcsNativeDeploymentConfiguration {
+
+  /** Stages where ECS allows a PAUSE hook and that are meaningful as a Spinnaker gate. */
+  static final Set<String> PAUSE_STAGES =
+      Set.of(
+          "POST_SCALE_UP",
+          "POST_TEST_TRAFFIC_SHIFT",
+          "PRE_PRODUCTION_TRAFFIC_SHIFT",
+          "POST_PRODUCTION_TRAFFIC_SHIFT");
 
   private EcsNativeDeploymentConfiguration() {}
 
@@ -78,6 +92,28 @@ final class EcsNativeDeploymentConfiguration {
       throw new IllegalArgumentException(
           "ecs-native deployment strategy must be ROLLING or BLUE_GREEN");
     }
+    if (StringUtils.isNotBlank(settings.getLifecyclePauseStage())) {
+      if (!StringUtils.equalsIgnoreCase(effectiveStrategy, "BLUE_GREEN")) {
+        throw new IllegalArgumentException(
+            "ecs-native lifecyclePauseStage requires deploymentStrategy BLUE_GREEN");
+      }
+      if (!PAUSE_STAGES.contains(settings.getLifecyclePauseStage().toUpperCase())) {
+        throw new IllegalArgumentException(
+            "ecs-native lifecyclePauseStage must be one of " + PAUSE_STAGES);
+      }
+      if (settings.getLifecyclePauseTimeoutMinutes() == null
+          || settings.getLifecyclePauseTimeoutMinutes() < 1) {
+        throw new IllegalArgumentException(
+            "ecs-native lifecyclePauseTimeoutMinutes must be set (>= 1) when lifecyclePauseStage "
+                + "is set");
+      }
+      String action = settings.getLifecyclePauseTimeoutAction();
+      if (StringUtils.isNotBlank(action)
+          && !StringUtils.equalsAnyIgnoreCase(action, "ROLLBACK", "CONTINUE")) {
+        throw new IllegalArgumentException(
+            "ecs-native lifecyclePauseTimeoutAction must be ROLLBACK or CONTINUE");
+      }
+    }
   }
 
   static boolean hasConfiguration(EcsNativeDeploymentSettings settings) {
@@ -87,7 +123,8 @@ final class EcsNativeDeploymentConfiguration {
         || settings.getDeploymentCircuitBreakerRollback() != null
         || hasDeploymentAlarms(settings)
         || StringUtils.isNotBlank(settings.getDeploymentStrategy())
-        || settings.getBakeTimeInMinutes() != null;
+        || settings.getBakeTimeInMinutes() != null
+        || StringUtils.isNotBlank(settings.getLifecyclePauseStage());
   }
 
   private static void applyCommonSettings(
@@ -108,6 +145,29 @@ final class EcsNativeDeploymentConfiguration {
     if (settings.getBakeTimeInMinutes() != null) {
       builder.bakeTimeInMinutes(settings.getBakeTimeInMinutes());
     }
+    if (StringUtils.isNotBlank(settings.getLifecyclePauseStage())) {
+      builder.lifecycleHooks(buildPauseHook(settings));
+    }
+  }
+
+  /**
+   * Both the timeout and its action are always set explicitly: ECS defaults for them are not
+   * documented, and an unattended pause must fail safe (roll back) rather than promote.
+   */
+  private static DeploymentLifecycleHook buildPauseHook(EcsNativeDeploymentSettings settings) {
+    String action =
+        StringUtils.defaultIfBlank(settings.getLifecyclePauseTimeoutAction(), "ROLLBACK")
+            .toUpperCase();
+    return DeploymentLifecycleHook.builder()
+        .targetType(DeploymentLifecycleHookTargetType.PAUSE)
+        .lifecycleStages(
+            DeploymentLifecycleHookStage.fromValue(settings.getLifecyclePauseStage().toUpperCase()))
+        .timeoutConfiguration(
+            DeploymentLifecycleHookTimeoutConfiguration.builder()
+                .timeoutInMinutes(settings.getLifecyclePauseTimeoutMinutes())
+                .action(DeploymentLifecycleHookAction.fromValue(action))
+                .build())
+        .build();
   }
 
   private static boolean hasDeploymentAlarms(EcsNativeDeploymentSettings settings) {

@@ -92,6 +92,22 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
   @Nullable Integer bakeTimeInMinutes;
 
   /**
+   * Opt-in: lifecycle stage at which ECS pauses a {@code BLUE_GREEN} deployment until a downstream
+   * Continue stage (or the timeout) acts on it. One of {@code POST_SCALE_UP}, {@code
+   * POST_TEST_TRAFFIC_SHIFT}, {@code PRE_PRODUCTION_TRAFFIC_SHIFT} or {@code
+   * POST_PRODUCTION_TRAFFIC_SHIFT}. Blank disables the PAUSE hook.
+   */
+  @Nullable String lifecyclePauseStage;
+
+  /** Minutes ECS waits at the pause hook; must outlast any gate (e.g. Manual Judgment) used. */
+  @Nullable Integer lifecyclePauseTimeoutMinutes;
+
+  /**
+   * Action ECS applies when the pause times out: {@code ROLLBACK} (default) or {@code CONTINUE}.
+   */
+  @Nullable String lifecyclePauseTimeoutAction;
+
+  /**
    * Target group ECS shifts traffic to during a {@code BLUE_GREEN} cutover.
    *
    * <p>Optional <em>only when the service has no load balancer</em>: with no target group attached,

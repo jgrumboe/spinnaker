@@ -92,7 +92,12 @@ describe('NativeDeploymentSettings', () => {
     expect(wrapper.find('[data-test-id="NativeDeployment.productionListenerRule"]').exists()).toBe(true);
     expect(wrapper.find('[data-test-id="NativeDeployment.testListenerRule"]').exists()).toBe(true);
     expect(wrapper.find('[data-test-id="NativeDeployment.blueGreenRoleArn"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test-id="NativeDeployment.deploymentStrategy"]').find('option[value="BLUE_GREEN"]').prop('disabled')).toBeFalsy();
+    expect(
+      wrapper
+        .find('[data-test-id="NativeDeployment.deploymentStrategy"]')
+        .find('option[value="BLUE_GREEN"]')
+        .prop('disabled'),
+    ).toBeFalsy();
   });
 
   it('disables the circuit-breaker rollback checkbox until the circuit breaker itself is enabled', () => {

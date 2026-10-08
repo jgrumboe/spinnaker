@@ -96,6 +96,8 @@ const helpContents: { [key: string]: string } = {
     '<p>Automatically roll back the ECS deployment when one of the selected deployment alarms enters an alarm state.</p>',
   'ecs.native.deploymentStrategy':
     '<p>Choose ECS rolling deployment or Blue/Green deployment. Blue/Green deployments with a load balancer also require the complete ALB traffic-shift configuration below.</p>',
+  'ecs.native.lifecyclePause':
+    '<p>Opt-in ECS PAUSE lifecycle hook for Blue/Green. ECS holds the deployment at the chosen stage; a Continue ECS Native Service Deployment stage after a Manual Judgment (or any other gate) then continues or rolls back. If nothing acts before the timeout, ECS applies the timeout action.</p>',
   'ecs.native.bakeTimeInMinutes':
     '<p>The number of minutes ECS waits after the new task set is healthy before completing the deployment and retiring the previous revision.</p>',
   'ecs.native.blueGreenAdvanced':

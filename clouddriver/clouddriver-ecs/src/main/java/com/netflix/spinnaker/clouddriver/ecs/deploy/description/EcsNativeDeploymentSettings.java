@@ -45,4 +45,25 @@ public interface EcsNativeDeploymentSettings {
 
   @Nullable
   Integer getBakeTimeInMinutes();
+
+  /**
+   * Blue/green lifecycle stage at which ECS pauses for an explicit Continue stage. Blank disables
+   * the PAUSE hook.
+   */
+  @Nullable
+  default String getLifecyclePauseStage() {
+    return null;
+  }
+
+  /** Minutes ECS waits at the PAUSE hook before applying the timeout action. */
+  @Nullable
+  default Integer getLifecyclePauseTimeoutMinutes() {
+    return null;
+  }
+
+  /** {@code ROLLBACK} (default) or {@code CONTINUE}, applied when the pause hook times out. */
+  @Nullable
+  default String getLifecyclePauseTimeoutAction() {
+    return null;
+  }
 }

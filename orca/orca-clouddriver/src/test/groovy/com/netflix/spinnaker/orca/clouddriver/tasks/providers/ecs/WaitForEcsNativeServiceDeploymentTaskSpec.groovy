@@ -99,42 +99,94 @@ class WaitForEcsNativeServiceDeploymentTaskSpec extends Specification {
     result.status == ExecutionStatus.RUNNING
   }
 
-  def 'blue green deploy succeeds at the ECS bake-time lifecycle gate'() {
-    given:
-    def stage = stageWithContext([
-      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
-      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
-      ecsNativeWaitForLifecycleGate: true
-    ])
-    def status = new EcsServiceDeploymentStatus(
-      serviceDeploymentArn: 'service-deployment-1', status: 'IN_PROGRESS', lifecycleStage: 'BAKE_TIME')
-
-    when:
-    def result = task.execute(stage)
-
-    then:
-    1 * ecsNativeService.getServiceDeploymentStatus(
-      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
-    result.status == ExecutionStatus.SUCCEEDED
+  private EcsServiceDeploymentStatus statusWithHook(String deploymentStatus, String hookStatus) {
+    new EcsServiceDeploymentStatus(
+      serviceDeploymentArn: 'service-deployment-1',
+      status: deploymentStatus,
+      lifecycleStage: 'POST_TEST_TRAFFIC_SHIFT',
+      lifecycleHookDetails: [new EcsServiceDeploymentStatus.LifecycleHook(hookId: 'hook-1', status: hookStatus)])
   }
 
-  def 'blue green gate keeps polling at a non-pausable lifecycle stage'() {
+  @Unroll
+  def 'gate wait with a #hookStatus PAUSE hook while #deploymentStatus maps to #expected'() {
     given:
     def stage = stageWithContext([
       account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
       ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
       ecsNativeWaitForLifecycleGate: true
     ])
-    def status = new EcsServiceDeploymentStatus(
-      serviceDeploymentArn: 'service-deployment-1', status: 'IN_PROGRESS', lifecycleStage: 'SCALE_UP')
 
     when:
     def result = task.execute(stage)
 
     then:
     1 * ecsNativeService.getServiceDeploymentStatus(
-      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(status)
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(statusWithHook(deploymentStatus, hookStatus))
+    result.status == expected
+
+    where:
+    deploymentStatus | hookStatus        || expected
+    'IN_PROGRESS'    | 'AWAITING_ACTION' || ExecutionStatus.SUCCEEDED
+    'IN_PROGRESS'    | 'IN_PROGRESS'     || ExecutionStatus.RUNNING
+    'IN_PROGRESS'    | 'SUCCEEDED'       || ExecutionStatus.RUNNING
+  }
+
+  def 'a hook awaiting action is ignored when the stage is not waiting for the gate'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1'
+    ])
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(statusWithHook('IN_PROGRESS', 'AWAITING_ACTION'))
     result.status == ExecutionStatus.RUNNING
+  }
+
+  @Unroll
+  def 'rollback outcome with ecsNativeAcceptRollback=#accept is #expected'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
+      ecsNativeAcceptRollback: accept
+    ])
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(
+        new EcsServiceDeploymentStatus(serviceDeploymentArn: 'service-deployment-1', status: 'ROLLBACK_SUCCESSFUL'))
+    result.status == expected
+
+    where:
+    accept || expected
+    true   || ExecutionStatus.SUCCEEDED
+    false  || ExecutionStatus.TERMINAL
+  }
+
+  def 'ROLLBACK_FAILED stays terminal even when a rollback was requested'() {
+    given:
+    def stage = stageWithContext([
+      account: 'test', region: 'us-west-2', serverGroupName: 'myapp',
+      ecsNativeExpectedServiceDeploymentArn: 'service-deployment-1',
+      ecsNativeAcceptRollback: true
+    ])
+
+    when:
+    def result = task.execute(stage)
+
+    then:
+    1 * ecsNativeService.getServiceDeploymentStatus(
+      'test', 'us-west-2', 'myapp', 'service-deployment-1') >> Calls.response(
+        new EcsServiceDeploymentStatus(serviceDeploymentArn: 'service-deployment-1', status: 'ROLLBACK_FAILED'))
+    result.status == ExecutionStatus.TERMINAL
   }
 
   def 'stop wait succeeds when the exact deployment reaches STOPPED'() {

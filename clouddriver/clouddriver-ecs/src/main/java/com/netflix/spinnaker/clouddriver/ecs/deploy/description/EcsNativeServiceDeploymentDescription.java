@@ -29,4 +29,10 @@ public class EcsNativeServiceDeploymentDescription extends ModifyServiceDescript
 
   /** Exact ARN returned by the native ECS service deployment write. */
   String ecsNativeExpectedServiceDeploymentArn;
+
+  /**
+   * Continue only: {@code CONTINUE} (default) resumes the paused deployment, {@code ROLLBACK}
+   * rejects it and rolls back.
+   */
+  @Nullable String lifecycleAction;
 }

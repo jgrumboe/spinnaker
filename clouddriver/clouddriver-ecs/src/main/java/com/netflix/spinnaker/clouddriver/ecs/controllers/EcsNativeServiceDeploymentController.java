@@ -194,6 +194,20 @@ public class EcsNativeServiceDeploymentController {
     status.setRolloutState(deployment.statusAsString());
     status.setRolloutStateReason(deployment.statusReason());
     status.setLifecycleStage(deployment.lifecycleStageAsString());
+    status.setLifecycleHookDetails(
+        deployment.lifecycleHookDetails().stream()
+            .map(
+                hook -> {
+                  EcsServiceDeploymentStatus.LifecycleHook detail =
+                      new EcsServiceDeploymentStatus.LifecycleHook();
+                  detail.setHookId(hook.hookId());
+                  detail.setStatus(hook.statusAsString());
+                  detail.setTargetType(hook.targetTypeAsString());
+                  detail.setExpiresAt(toEpochMillis(hook.expiresAt()));
+                  detail.setTimeoutAction(hook.timeoutActionAsString());
+                  return detail;
+                })
+            .toList());
     if (targetRevision != null) {
       status.setTargetServiceRevisionArn(targetRevision.serviceRevisionArn());
       status.setTargetTaskDefinition(targetRevision.taskDefinition());
