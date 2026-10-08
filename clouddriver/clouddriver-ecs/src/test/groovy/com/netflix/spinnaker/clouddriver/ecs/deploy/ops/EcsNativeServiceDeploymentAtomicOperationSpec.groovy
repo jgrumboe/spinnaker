@@ -113,6 +113,34 @@ class EcsNativeServiceDeploymentAtomicOperationSpec extends Specification {
     0 * ecs.continueServiceDeployment(_)
   }
 
+  def 'polls DescribeServices until ECS attaches the new service deployment'() {
+    given:
+    def ecs = Mock(EcsClient)
+    def operation = lifecycleOperation(new EcsNativeContinueServiceDeploymentAtomicOperation(description([:])), ecs)
+    operation.serviceDeploymentPollMillis = 0
+    def bare = Service.builder().serviceName('service').build()
+    def attached = Service.builder().serviceName('service').currentServiceDeployment('arn:deployment:9').build()
+
+    when:
+    def arn = operation.resolveCurrentServiceDeployment(bare, 'cluster-arn')
+
+    then:
+    2 * ecs.describeServices(_) >>> [
+      DescribeServicesResponse.builder().services(bare).build(),
+      DescribeServicesResponse.builder().services(attached).build()]
+    arn == 'arn:deployment:9'
+  }
+
+  def 'returns the deployment ARN straight from the service when present'() {
+    given:
+    def ecs = Mock(EcsClient)
+    def operation = lifecycleOperation(new EcsNativeContinueServiceDeploymentAtomicOperation(description([:])), ecs)
+
+    expect:
+    operation.resolveCurrentServiceDeployment(
+      Service.builder().serviceName('service').currentServiceDeployment('arn:deployment:1').build(), 'cluster-arn') == 'arn:deployment:1'
+  }
+
   private static EcsNativeServiceDeploymentDescription description(Map overrides) {
     new EcsNativeServiceDeploymentDescription([
       credentials: TestCredential.named('test', [:]),

@@ -114,10 +114,10 @@ public class EcsNativeUpdateServiceAtomicOperation
     Service service = ecs.updateService(requestBuilder.build()).service();
     updateTaskStatus(String.format("Done updating ECS service %s.", serviceName));
 
-    return buildDeploymentResult(service);
+    return buildDeploymentResult(service, cluster);
   }
 
-  private DeploymentResult buildDeploymentResult(Service service) {
+  private DeploymentResult buildDeploymentResult(Service service, String cluster) {
     String resolvedServiceName =
         StringUtils.defaultIfBlank(service.serviceName(), description.getServerGroupName());
     Map<String, String> namesByRegion = new HashMap<>();
@@ -135,10 +135,9 @@ public class EcsNativeUpdateServiceAtomicOperation
       deployment.setLocation(description.getRegion());
       deployment.setServerGroupName(resolvedServiceName);
       deployment.getMetadata().put("ecsNativeExpectedTaskDefinition", service.taskDefinition());
-      if (StringUtils.isNotBlank(service.currentServiceDeployment())) {
-        deployment
-            .getMetadata()
-            .put("ecsNativeExpectedServiceDeploymentArn", service.currentServiceDeployment());
+      String serviceDeploymentArn = resolveCurrentServiceDeployment(service, cluster);
+      if (StringUtils.isNotBlank(serviceDeploymentArn)) {
+        deployment.getMetadata().put("ecsNativeExpectedServiceDeploymentArn", serviceDeploymentArn);
       }
       result.setDeployments(Collections.singleton(deployment));
     }

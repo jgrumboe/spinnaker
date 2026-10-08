@@ -410,10 +410,10 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
       deployment.setLocation(getRegion());
       deployment.setServerGroupName(service.serviceName());
       deployment.getMetadata().put("ecsNativeExpectedTaskDefinition", service.taskDefinition());
-      if (StringUtils.isNotBlank(service.currentServiceDeployment())) {
-        deployment
-            .getMetadata()
-            .put("ecsNativeExpectedServiceDeploymentArn", service.currentServiceDeployment());
+      String serviceDeploymentArn =
+          resolveCurrentServiceDeployment(service, description.getEcsClusterName());
+      if (StringUtils.isNotBlank(serviceDeploymentArn)) {
+        deployment.getMetadata().put("ecsNativeExpectedServiceDeploymentArn", serviceDeploymentArn);
       }
       result.setDeployments(Collections.singleton(deployment));
     }

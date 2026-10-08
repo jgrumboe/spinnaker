@@ -27,6 +27,7 @@ import com.netflix.spinnaker.clouddriver.ecs.security.NetflixECSCredentials;
 import com.netflix.spinnaker.clouddriver.ecs.services.ContainerInformationService;
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation;
 import com.netflix.spinnaker.credentials.CredentialsRepository;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import software.amazon.awssdk.services.applicationautoscaling.ApplicationAutoScalingClient;
 import software.amazon.awssdk.services.ecs.EcsClient;
@@ -106,6 +107,43 @@ public abstract class AbstractEcsAtomicOperation<T extends AbstractECSDescriptio
               + " is not marked as owned by ecs-native; refusing to write it.");
     }
     return service;
+  }
+
+  /** Attempts to look up the ARN of the deployment ECS just started; see the method below. */
+  long serviceDeploymentPollMillis = 1000;
+
+  /**
+   * CreateService/UpdateService can return before ECS has attached the new service deployment, so
+   * {@code currentServiceDeployment} may be blank. The deployment ARN pins every later wait and
+   * lifecycle action, so poll DescribeServices briefly for it instead of leaving it unset.
+   */
+  protected String resolveCurrentServiceDeployment(Service service, String cluster) {
+    if (StringUtils.isNotBlank(service.currentServiceDeployment())) {
+      return service.currentServiceDeployment();
+    }
+    for (int attempt = 0; attempt < 10; attempt++) {
+      Service described =
+          getAmazonEcsClient()
+              .describeServices(
+                  DescribeServicesRequest.builder()
+                      .cluster(cluster)
+                      .services(service.serviceName())
+                      .build())
+              .services()
+              .stream()
+              .findFirst()
+              .orElse(null);
+      if (described != null && StringUtils.isNotBlank(described.currentServiceDeployment())) {
+        return described.currentServiceDeployment();
+      }
+      try {
+        Thread.sleep(serviceDeploymentPollMillis);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return null;
+      }
+    }
+    return null;
   }
 
   void updateTaskStatus(String status) {
