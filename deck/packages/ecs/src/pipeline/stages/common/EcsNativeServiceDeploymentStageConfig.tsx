@@ -15,7 +15,7 @@ export function EcsNativeServiceDeploymentStageConfig({
   const upstreamDeployStages = PipelineConfigService.getAllUpstreamDependencies(pipeline, stage).filter(
     (candidate) => candidate.type === 'createServerGroup' && candidate.cloudProvider === ECS_NATIVE,
   );
-  const isStop = stage.type === 'stopEcsNativeServiceDeployment';
+  const isStop = stage.type === 'ecsNativeStopServiceDeployment';
   const deploymentStageRefId = stage.deploymentStageRefId || stage.requisiteStageRefIds?.[0] || '';
 
   React.useEffect(() => {

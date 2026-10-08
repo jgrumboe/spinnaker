@@ -57,8 +57,8 @@ describe('ECS package registration', () => {
       .sort((left, right) => left.provides.localeCompare(right.provides));
 
     expect(nativeStages.map((stage) => stage.provides)).toEqual([
-      'continueEcsNativeServiceDeployment',
-      'stopEcsNativeServiceDeployment',
+      'ecsNativeContinueServiceDeployment',
+      'ecsNativeStopServiceDeployment',
     ]);
     nativeStages.forEach((stage) => {
       expect(stage.component).toEqual(jasmine.any(Function));

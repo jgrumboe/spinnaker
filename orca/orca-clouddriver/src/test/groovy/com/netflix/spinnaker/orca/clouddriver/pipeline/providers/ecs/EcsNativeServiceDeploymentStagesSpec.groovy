@@ -21,6 +21,7 @@ import com.netflix.spinnaker.orca.clouddriver.tasks.MonitorKatoTask
 import com.netflix.spinnaker.orca.clouddriver.tasks.providers.ecs.EcsNativeContinueServiceDeploymentTask
 import com.netflix.spinnaker.orca.clouddriver.tasks.providers.ecs.EcsNativeStopServiceDeploymentTask
 import com.netflix.spinnaker.orca.clouddriver.tasks.providers.ecs.WaitForEcsNativeServiceDeploymentTask
+import com.netflix.spinnaker.orca.api.pipeline.graph.StageDefinitionBuilder
 import com.netflix.spinnaker.orca.pipeline.model.PipelineExecutionImpl
 import com.netflix.spinnaker.orca.pipeline.model.StageExecutionImpl
 import spock.lang.Specification
@@ -60,7 +61,7 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
   def 'continue stage runs the operation, monitors it, then waits for the exact deployment to succeed'() {
     given:
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
-    def stage = lifecycleStage(pipeline, 'continueEcsNativeServiceDeployment', 'continue-ref')
+    def stage = lifecycleStage(pipeline, 'ecsNativeContinueServiceDeployment', 'continue-ref')
 
     when:
     def tasks = tasksOf(new EcsNativeContinueServiceDeploymentStage().buildTaskGraph(stage))
@@ -77,7 +78,7 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
   def 'stop stage runs the operation, monitors it, then waits for the exact deployment to stop'() {
     given:
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
-    def stage = lifecycleStage(pipeline, 'stopEcsNativeServiceDeployment', 'stop-ref')
+    def stage = lifecycleStage(pipeline, 'ecsNativeStopServiceDeployment', 'stop-ref')
 
     when:
     def tasks = tasksOf(new EcsNativeStopServiceDeploymentStage().buildTaskGraph(stage))
@@ -91,11 +92,17 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
     ]
   }
 
+  def 'stage types match the names Deck registers and pipelines use'() {
+    expect:
+    StageDefinitionBuilder.getType(EcsNativeContinueServiceDeploymentStage) == 'ecsNativeContinueServiceDeployment'
+    StageDefinitionBuilder.getType(EcsNativeStopServiceDeploymentStage) == 'ecsNativeStopServiceDeployment'
+  }
+
   def 'stop stage asks the wait task for STOPPED, and continue stage does not'() {
     given:
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
-    def stopStage = lifecycleStage(pipeline, 'stopEcsNativeServiceDeployment', 'stop-ref')
-    def continueStage = lifecycleStage(pipeline, 'continueEcsNativeServiceDeployment', 'continue-ref')
+    def stopStage = lifecycleStage(pipeline, 'ecsNativeStopServiceDeployment', 'stop-ref')
+    def continueStage = lifecycleStage(pipeline, 'ecsNativeContinueServiceDeployment', 'continue-ref')
 
     expect:
     // Without this flag the wait would treat STOPPED as a terminal failure of the deployment.
@@ -107,7 +114,7 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
   def 'a requested Continue rollback is an accepted outcome'() {
     given:
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
-    def rejectContinue = lifecycleStage(pipeline, 'continueEcsNativeServiceDeployment', 'continue-ref')
+    def rejectContinue = lifecycleStage(pipeline, 'ecsNativeContinueServiceDeployment', 'continue-ref')
     rejectContinue.context.lifecycleAction = 'rollback'
 
     expect:
@@ -118,8 +125,8 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
     given:
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
     deployStage(pipeline, 'arn:aws:ecs:us-west-2:123:service-deployment/myapp-main/abc')
-    def continueStage = lifecycleStage(pipeline, 'continueEcsNativeServiceDeployment', 'continue-ref')
-    def stopStage = lifecycleStage(pipeline, 'stopEcsNativeServiceDeployment', 'stop-ref')
+    def continueStage = lifecycleStage(pipeline, 'ecsNativeContinueServiceDeployment', 'continue-ref')
+    def stopStage = lifecycleStage(pipeline, 'ecsNativeStopServiceDeployment', 'stop-ref')
 
     expect:
     new EcsNativeContinueServiceDeploymentTask().convert(continueStage).ecsNativeExpectedServiceDeploymentArn ==
@@ -135,7 +142,7 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
     given:
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
     deployStage(pipeline, 'arn:current')
-    def stage = lifecycleStage(pipeline, 'continueEcsNativeServiceDeployment', 'continue-ref')
+    def stage = lifecycleStage(pipeline, 'ecsNativeContinueServiceDeployment', 'continue-ref')
     stage.context.ecsNativeExpectedServiceDeploymentArn = 'arn:stale-from-an-earlier-run'
 
     expect:
@@ -145,7 +152,7 @@ class EcsNativeServiceDeploymentStagesSpec extends Specification {
   def 'a lifecycle stage with neither a deploy-stage reference nor a direct ARN fails closed'() {
     given:
     def pipeline = PipelineExecutionImpl.newPipeline('orca')
-    def stage = new StageExecutionImpl(pipeline, 'stopEcsNativeServiceDeployment', 'stop', [
+    def stage = new StageExecutionImpl(pipeline, 'ecsNativeStopServiceDeployment', 'stop', [
       cloudProvider: 'ecs-native', account: 'test', region: 'us-west-2', serverGroupName: 'myapp-main',
     ])
     pipeline.stages << stage

@@ -17,7 +17,7 @@ describe('EcsNativeServiceDeploymentStageConfig', () => {
   const pipeline = {
     stages: [
       { cloudProvider: 'ecs-native', name: 'Deploy orders', refId: 'deploy-ref', type: 'createServerGroup' },
-      { ...stage, name: 'Continue orders', refId: 'continue-ref', type: 'continueEcsNativeServiceDeployment' },
+      { ...stage, name: 'Continue orders', refId: 'continue-ref', type: 'ecsNativeContinueServiceDeployment' },
     ],
   };
 
