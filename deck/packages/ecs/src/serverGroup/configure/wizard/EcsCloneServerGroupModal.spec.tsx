@@ -101,6 +101,18 @@ describe('EcsCloneServerGroupModal', () => {
     expect(wrapper.text()).toContain('Clone server group unavailable');
   });
 
+  it('still renders the wizard for native clusters edited or created inside a pipeline deploy stage', () => {
+    ['editPipeline', 'createPipeline'].forEach((mode) => {
+      const command = buildCommand({ cloudProvider: 'ecs-native' });
+      command.viewState = { ...command.viewState, mode } as any;
+      const wrapper = shallow(<EcsCloneServerGroupModal {...buildProps(command)} />, {
+        disableLifecycleMethods: true,
+      } as any);
+      expect(wrapper.find(WizardModal).exists()).toBe(true);
+      expect(wrapper.text()).not.toContain('Clone server group unavailable');
+    });
+  });
+
   it('does not set state when backing data resolves after unmount', async () => {
     const modal = new EcsCloneServerGroupModal(buildProps(buildCommand())) as any;
     let resolveBackingData: () => void;

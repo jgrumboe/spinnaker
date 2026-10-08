@@ -567,7 +567,10 @@ export class EcsCloneServerGroupModalComponent extends React.Component<
       );
     }
 
-    if (command.cloudProvider === 'ecs-native') {
+    // Only a real clone (details page, no pipeline context) is unsupported for ecs-native. Editing or
+    // creating a cluster inside a pipeline deploy stage just returns the command to the stage.
+    const pipelineMode = command.viewState?.mode === 'editPipeline' || command.viewState?.mode === 'createPipeline';
+    if (command.cloudProvider === 'ecs-native' && !pipelineMode) {
       return (
         <div className="modal-content">
           <div className="modal-header">
