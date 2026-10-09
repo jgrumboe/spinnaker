@@ -92,14 +92,21 @@ Terraform can create the ECS service once and Spinnaker can then deploy to it:
 - Tag the service `spinnaker:provider = ecs-native`. That tag is the ownership marker; an untagged
   service with the same name is refused.
 - Name the service `<app>-<stack>-<detail>`, the fixed name the deploy computes.
-- Let Terraform ignore what Spinnaker changes on every deploy: `lifecycle { ignore_changes =
-  [task_definition, desired_count] }`.
 - Leave "copy existing capacity" on (the Deck default). The in-place deploy then sends no
-  `desiredCount` and does not call `RegisterScalableTarget`, so a Terraform-managed
-  `aws_appautoscaling_target` and its policies are untouched and the autoscaled task count is
-  preserved. With it off, the stage `capacity` is authoritative and each deploy resets the desired
-  count and rewrites the scalable target's min/max. "Copy scaling policies" has nothing to do: the
-  service keeps its own policies.
+  `desiredCount` and does not call `RegisterScalableTarget`, and it copies network, load balancer,
+  placement, capacity provider, platform version and health check grace period from the live
+  service. A Terraform-managed `aws_appautoscaling_target` and its policies are untouched and the
+  autoscaled task count is preserved. With it off, the stage values are authoritative: each deploy
+  resets the desired count, rewrites the scalable target's min/max and overrides those service
+  settings. "Copy scaling policies" has nothing to do: the service keeps its own policies.
+- Make Terraform ignore what Spinnaker writes on every deploy:
+  - always: `task_definition`, `desired_count`, `deployment_circuit_breaker` (Deck always sends
+    explicit booleans, so the circuit breaker is set on every deploy);
+  - when the stage sets them: `deployment_minimum_healthy_percent`,
+    `deployment_maximum_percent`, `alarms`, `enable_execute_command`, and `load_balancer` (Blue/Green
+    ALB traffic shift re-sends the load balancers);
+  - deployment strategy, bake time and lifecycle hooks are written by Spinnaker too; AWS provider
+    5.x has no `deployment_configuration` block for them, so check your provider version.
 
 ```hcl
 resource "aws_ecs_service" "app" {
@@ -110,7 +117,7 @@ resource "aws_ecs_service" "app" {
   tags            = { "spinnaker:provider" = "ecs-native" }
 
   lifecycle {
-    ignore_changes = [task_definition, desired_count]
+    ignore_changes = [task_definition, desired_count, deployment_circuit_breaker]
   }
 }
 
@@ -119,12 +126,14 @@ resource "aws_appautoscaling_target" "app" {
   scalable_dimension = "ecs:service:DesiredCount"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.app.name}"
   min_capacity       = 2
-  max_capacity       = 10
+  max_capacity       = 6
 }
 ```
 
-Not yet verified against live AWS: a Spinnaker deploy on a Terraform-created service leaving
-`terraform plan` empty.
+Verified on real ECS (staging): with "copy existing capacity" on, a deploy with a different stage
+capacity left the desired count, the 2-6 scalable target and the target-tracking policy untouched;
+with it off, the desired count and target were reset to the stage capacity. `terraform plan` was
+empty once the circuit breaker was declared, so ignore it instead.
 
 ## Verification boundary
 
