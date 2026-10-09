@@ -14,6 +14,7 @@ import {
 
 import { EcsServerGroupActionsComponent as EcsServerGroupActions } from './EcsServerGroupActions';
 import { EcsResizeServerGroupModal } from './resize/EcsResizeServerGroupModal';
+import { EcsNativeRollbackServerGroupModal } from './rollback/EcsNativeRollbackServerGroupModal';
 import { EcsRollbackServerGroupModal } from './rollback/EcsRollbackServerGroupModal';
 
 describe('<EcsServerGroupActions />', () => {
@@ -138,6 +139,22 @@ describe('<EcsServerGroupActions />', () => {
     action(wrapper, 'Rollback').prop('onClick')();
 
     expect(show).toHaveBeenCalledOnceWith({ application: app, serverGroup }, runtimeServices);
+  });
+
+  it('opens the native rollback modal for an ecs-native server group (detected by isNative flag)', () => {
+    const app = buildApp();
+    // clouddriver stamps cloudProvider "ecs" on native services too, so native is signaled by the
+    // explicit isNative flag (derived from the unversioned service name), not by cloudProvider or
+    // the rollout fields (which classic ECS services also carry).
+    const serverGroup = buildServerGroup({ isNative: true });
+    const classicShow = spyOn(EcsRollbackServerGroupModal, 'show').and.returnValue(Promise.resolve({} as any));
+    const nativeShow = spyOn(EcsNativeRollbackServerGroupModal, 'show').and.returnValue(Promise.resolve({} as any));
+    const wrapper = shallow(<EcsServerGroupActions app={app} serverGroup={serverGroup} />);
+
+    action(wrapper, 'Rollback').prop('onClick')();
+
+    expect(nativeShow).toHaveBeenCalledOnceWith({ application: app, serverGroup }, runtimeServices);
+    expect(classicShow).not.toHaveBeenCalled();
   });
 
   it('opens the completed resize modal with the enriched server group', () => {

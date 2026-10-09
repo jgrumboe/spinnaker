@@ -91,6 +91,28 @@ const renderCapacityProvider = (command: IEcsServerGroupCommand): ShallowWrapper
 };
 
 describe('EcsCloneServerGroupModal', () => {
+  it('shows an explicit unsupported state for native clones instead of rendering a submit wizard', () => {
+    const wrapper = shallow(
+      <EcsCloneServerGroupModal {...buildProps(buildCommand({ cloudProvider: 'ecs-native' }))} />,
+      { disableLifecycleMethods: true } as any,
+    );
+
+    expect(wrapper.find(WizardModal).exists()).toBe(false);
+    expect(wrapper.text()).toContain('Clone server group unavailable');
+  });
+
+  it('still renders the wizard for native clusters edited or created inside a pipeline deploy stage', () => {
+    ['editPipeline', 'createPipeline'].forEach((mode) => {
+      const command = buildCommand({ cloudProvider: 'ecs-native' });
+      command.viewState = { ...command.viewState, mode } as any;
+      const wrapper = shallow(<EcsCloneServerGroupModal {...buildProps(command)} />, {
+        disableLifecycleMethods: true,
+      } as any);
+      expect(wrapper.find(WizardModal).exists()).toBe(true);
+      expect(wrapper.text()).not.toContain('Clone server group unavailable');
+    });
+  });
+
   it('does not set state when backing data resolves after unmount', async () => {
     const modal = new EcsCloneServerGroupModal(buildProps(buildCommand())) as any;
     let resolveBackingData: () => void;
@@ -840,7 +862,7 @@ describe('EcsCloneServerGroupModal', () => {
     expect(wrapper.find(WizardModal).prop('taskMonitor')).toBe(wrapper.state('taskMonitor'));
   });
 
-  it('renders the legacy eight-page WizardModal grouping', () => {
+  it('renders the legacy nine-page WizardModal grouping', () => {
     const command = buildCommand({ useTaskDefinitionArtifact: false });
     const wrapper = shallow(<EcsCloneServerGroupModal {...buildProps(command)} />, {
       disableLifecycleMethods: true,
@@ -872,6 +894,7 @@ describe('EcsCloneServerGroupModal', () => {
       'Logging',
       'Service Discovery',
       'Advanced Settings',
+      'Native ECS Deployment',
     ]);
   });
 
@@ -1227,7 +1250,9 @@ describe('EcsCloneServerGroupModal', () => {
     );
 
     expect(page.find(EcsNetworking).exists()).toBe(true);
-    const networking = shallow(page.find(EcsNetworking).getElement());
+    const networking = shallow(page.find(EcsNetworking).getElement(), {
+      disableLifecycleMethods: true,
+    } as any);
     const subnetOptions = findByTestId(networking, 'Networking.subnetType').find(TetheredSelect).prop('options');
     const securityGroupOptions = findByTestId(networking, 'Networking.securityGroups')
       .find(TetheredSelect)
@@ -1275,7 +1300,9 @@ describe('EcsCloneServerGroupModal', () => {
     findByTestId(page, 'ServerGroup.useInputs').simulate('change');
     expect(onFieldChange).toHaveBeenCalledWith('useTaskDefinitionArtifact', false);
 
-    const taskDefinition = shallow(page.find(TaskDefinition).getElement());
+    const taskDefinition = shallow(page.find(TaskDefinition).getElement(), {
+      disableLifecycleMethods: true,
+    } as any);
     const targetOptions = findByTestId(taskDefinition, 'Artifacts.targetGroup').find(TetheredSelect).prop('options');
     expect(targetOptions.map((option: any) => option.value)).toEqual(['available-target', 'persisted-target']);
   });
@@ -1304,7 +1331,9 @@ describe('EcsCloneServerGroupModal', () => {
     );
 
     expect(page.find(Container).exists()).toBe(true);
-    const container = shallow(page.find(Container).getElement());
+    const container = shallow(page.find(Container).getElement(), {
+      disableLifecycleMethods: true,
+    } as any);
     expect(findByTestId(container, 'ContainerInputs.containerImage').exists()).toBe(true);
     expect(findByTestId(container, 'ContainerInputs.computeUnits').prop('value')).toBe(512);
     expect(findByTestId(container, 'ContainerInputs.reservedMemory').prop('value')).toBe(1024);
@@ -1391,7 +1420,9 @@ describe('EcsCloneServerGroupModal', () => {
     );
 
     expect(page.find(ServiceDiscovery).exists()).toBe(true);
-    const serviceDiscovery = shallow(page.find(ServiceDiscovery).getElement());
+    const serviceDiscovery = shallow(page.find(ServiceDiscovery).getElement(), {
+      disableLifecycleMethods: true,
+    } as any);
     const registryOptions = findByTestId(serviceDiscovery, 'ServiceDiscovery.registry')
       .find(TetheredSelect)
       .prop('options');
@@ -1445,6 +1476,7 @@ describe('EcsCloneServerGroupModal', () => {
       imageDescription: persistedImage,
       targetGroupMappings: [{ containerName: '', containerPort: 8080, targetGroup: 'persisted-target' }],
     });
+    spyOn(AccountService, 'listAccounts').and.returnValue(Promise.resolve([]));
     const wrapper = shallow(
       <Container
         command={command}
@@ -1471,6 +1503,7 @@ describe('EcsCloneServerGroupModal', () => {
       targetGroupMappings: [{ containerName: 'api', containerPort: 8080, targetGroup: 'persisted-target' }],
       taskDefinitionArtifact: persistedArtifact,
     });
+    spyOn(AccountService, 'listAccounts').and.returnValue(Promise.resolve([]));
     const wrapper = shallow(
       <TaskDefinition
         command={command}

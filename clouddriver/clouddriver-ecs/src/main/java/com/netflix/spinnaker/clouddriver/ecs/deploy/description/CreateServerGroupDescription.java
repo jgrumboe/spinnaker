@@ -98,7 +98,7 @@ public class CreateServerGroupDescription extends AbstractECSDescription {
   Map<Object, Object> spelProcessedTaskDefinitionArtifact;
   String taskDefinitionArtifactAccount;
   Map<String, String> containerToImageMap;
-  boolean enableExecuteCommand;
+  @Nullable Boolean enableExecuteCommand;
   boolean enableDeploymentCircuitBreaker;
 
   /**

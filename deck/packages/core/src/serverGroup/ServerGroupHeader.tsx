@@ -118,6 +118,7 @@ export class SequenceAndBuildAndImages extends React.Component<IServerGroupHeade
     const serverGroupSequence = NameUtils.getSequence(serverGroup.moniker.sequence);
     const ciBuild = serverGroup.buildInfo && serverGroup.buildInfo.ciBuild;
     const appArtifact = serverGroup.buildInfo && serverGroup.buildInfo.appArtifact;
+
     return (
       <div>
         {!!serverGroupSequence && <span className="server-group-sequence"> {serverGroupSequence}</span>}

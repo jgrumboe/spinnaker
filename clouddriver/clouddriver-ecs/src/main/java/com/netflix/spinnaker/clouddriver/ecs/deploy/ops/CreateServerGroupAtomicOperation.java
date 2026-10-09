@@ -155,7 +155,9 @@ public class CreateServerGroupAtomicOperation
     return makeDeploymentResult(service);
   }
 
-  private EcsServerGroupName buildEcsServerGroupName(EcsClient ecs, Namer<EcsResource> namer) {
+  // protected (not private) so the ecs-native create operation can override name resolution to
+  // produce a fixed, unversioned server-group name instead of the resolver's next vNNN.
+  protected EcsServerGroupName buildEcsServerGroupName(EcsClient ecs, Namer<EcsResource> namer) {
     EcsClient ecsV2 =
         amazonClientProvider.getAmazonEcsV2(description.getCredentials(), getRegion());
     EcsServerGroupNameResolver serverGroupNameResolver =
@@ -571,7 +573,7 @@ public class CreateServerGroupAtomicOperation
             .placementStrategy(description.getPlacementStrategySequence())
             .serviceRegistries(serviceRegistries)
             .deploymentConfiguration(deploymentConfiguration)
-            .enableExecuteCommand(description.isEnableExecuteCommand());
+            .enableExecuteCommand(Boolean.TRUE.equals(description.getEnableExecuteCommand()));
 
     List<Tag> taskDefTags = new LinkedList<>();
     if (description.getTags() != null && !description.getTags().isEmpty()) {
@@ -666,7 +668,7 @@ public class CreateServerGroupAtomicOperation
     return requestBuilder.build();
   }
 
-  private boolean isTaggingEnabled(EcsClient ecs) {
+  protected boolean isTaggingEnabled(EcsClient ecs) {
     boolean isServiceLongArnFormatEnabled = false;
     boolean isTaskLongArnFormatEnabled = false;
 
@@ -695,7 +697,7 @@ public class CreateServerGroupAtomicOperation
     return isServiceLongArnFormatEnabled && isTaskLongArnFormatEnabled;
   }
 
-  private String registerAutoScalingGroup(
+  protected String registerAutoScalingGroup(
       AmazonCredentials credentials, Service service, ScalableTarget sourceTarget) {
 
     ApplicationAutoScalingClient autoScalingClient = getAmazonApplicationAutoScalingClient();
@@ -795,7 +797,7 @@ public class CreateServerGroupAtomicOperation
     return null;
   }
 
-  private String inferAssumedRoleArn(AmazonCredentials credentials) {
+  protected String inferAssumedRoleArn(AmazonCredentials credentials) {
     String role;
     if (credentials instanceof AssumeRoleAmazonCredentials) {
       role = ((AssumeRoleAmazonCredentials) credentials).getAssumeRole();
@@ -853,7 +855,7 @@ public class CreateServerGroupAtomicOperation
     return subnetTypes;
   }
 
-  private DeploymentResult makeDeploymentResult(Service service) {
+  protected DeploymentResult makeDeploymentResult(Service service) {
     Map<String, String> namesByRegion = new HashMap<>();
     namesByRegion.put(getRegion(), service.serviceName());
 
@@ -863,7 +865,7 @@ public class CreateServerGroupAtomicOperation
     return result;
   }
 
-  private Collection<LoadBalancer> retrieveLoadBalancers(String containerName) {
+  protected Collection<LoadBalancer> retrieveLoadBalancers(String containerName) {
     Set<LoadBalancer> loadBalancers = new HashSet<>();
     Set<CreateServerGroupDescription.TargetGroupProperties> targetGroupMappings = new HashSet<>();
 

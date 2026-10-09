@@ -3,6 +3,7 @@ import { CloudProviderRegistry, Registry } from '@spinnaker/core';
 import { registerEcsPipelineStages } from './ecs.module';
 import { EcsSecurityGroupReader } from './securityGroup/securityGroup.reader';
 import { EcsSecurityGroupTransformer } from './securityGroup/securityGroup.transformer';
+import { EcsServerGroupHeader } from './serverGroup/EcsServerGroupHeader';
 import { EcsServerGroupCommandBuilder } from './serverGroup/configure/serverGroupCommandBuilder.service';
 import { EcsServerGroupActions } from './serverGroup/details/EcsServerGroupActions';
 import { EcsServerGroupTransformer } from './serverGroup/serverGroup.transformer';
@@ -14,9 +15,10 @@ describe('ECS package registration', () => {
     expect(CloudProviderRegistry.getValue('ecs', 'serverGroup.detailsActions').displayName).toBe(
       EcsServerGroupActions.displayName,
     );
+    expect(CloudProviderRegistry.getValue('ecs', 'serverGroups.pod.header')).toBe(EcsServerGroupHeader);
     expect(CloudProviderRegistry.getValue('ecs', 'adHocInfrastructureWritesEnabled')).toBeTrue();
     const detailsSections = CloudProviderRegistry.getValue('ecs', 'serverGroup.detailsSections');
-    expect(detailsSections.length).toBe(9);
+    expect(detailsSections.length).toBe(10);
     expect(detailsSections.every((section: unknown) => typeof section === 'function')).toBeTrue();
     expect(CloudProviderRegistry.getValue('ecs', 'securityGroup.reader')).toBe(EcsSecurityGroupReader);
     expect(CloudProviderRegistry.getValue('ecs', 'securityGroup.transformer')).toBe(EcsSecurityGroupTransformer);
@@ -44,6 +46,39 @@ describe('ECS package registration', () => {
     expect(stages.find((stage) => stage.cloudProvider === 'ecs' && stage.provides === 'resizeServerGroup')).toEqual(
       jasmine.objectContaining({ cloudProvider: 'ecs', provides: 'resizeServerGroup' }),
     );
+  });
+
+  it('registers explicit native service deployment lifecycle stages without automatic behavior', () => {
+    Registry.reinitialize();
+    registerEcsPipelineStages();
+    const nativeStages = Registry.pipeline
+      .getStageTypes()
+      .filter((stage) => stage.key?.startsWith('ecsNative'))
+      .sort((left, right) => left.key.localeCompare(right.key));
+    expect(nativeStages.map((stage) => stage.key)).toEqual([
+      'ecsNativeContinueServiceDeployment',
+      'ecsNativeStopServiceDeployment',
+    ]);
+    // Stages with `provides` are provider implementations of a base stage and never appear in the type picker.
+    nativeStages.forEach((stage) => {
+      expect(stage.provides).toBeUndefined();
+      expect(stage.label).toBeTruthy();
+      expect(stage.description).toBeTruthy();
+    });
+    const pickerKeys = Registry.pipeline
+      .getConfigurableStageTypes([{ cloudProvider: 'ecs' } as any])
+      .map((stage) => stage.key);
+    expect(pickerKeys).toContain('ecsNativeContinueServiceDeployment');
+    expect(pickerKeys).toContain('ecsNativeStopServiceDeployment');
+    nativeStages.forEach((stage) => {
+      expect(stage.component).toEqual(jasmine.any(Function));
+      expect(stage.validators).toEqual([
+        { type: 'requiredField', fieldName: 'credentials', fieldLabel: 'account' },
+        { type: 'requiredField', fieldName: 'region' },
+        { type: 'requiredField', fieldName: 'serverGroupName' },
+      ]);
+      expect(stage).not.toEqual(jasmine.objectContaining({ onFailure: jasmine.anything() }));
+    });
   });
 
   it('ECS stage configs expose React components without legacy templates', () => {
