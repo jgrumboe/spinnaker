@@ -85,6 +85,47 @@ backward-compatible API fallback. Orca resolves the ARN from that stage's output
 all lifecycle requests to it, and uses a PAUSE hook in `AWAITING_ACTION` as the explicit ECS lifecycle
 gate before Continue. Stop never runs automatically on deployment failure.
 
+## Services created by Terraform
+
+Terraform can create the ECS service once and Spinnaker can then deploy to it:
+
+- Tag the service `spinnaker:provider = ecs-native`. That tag is the ownership marker; an untagged
+  service with the same name is refused.
+- Name the service `<app>-<stack>-<detail>`, the fixed name the deploy computes.
+- Let Terraform ignore what Spinnaker changes on every deploy: `lifecycle { ignore_changes =
+  [task_definition, desired_count] }`.
+- Leave "copy existing capacity" on (the Deck default). The in-place deploy then sends no
+  `desiredCount` and does not call `RegisterScalableTarget`, so a Terraform-managed
+  `aws_appautoscaling_target` and its policies are untouched and the autoscaled task count is
+  preserved. With it off, the stage `capacity` is authoritative and each deploy resets the desired
+  count and rewrites the scalable target's min/max. "Copy scaling policies" has nothing to do: the
+  service keeps its own policies.
+
+```hcl
+resource "aws_ecs_service" "app" {
+  name            = "myapp-prod"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.bootstrap.arn
+  desired_count   = 2
+  tags            = { "spinnaker:provider" = "ecs-native" }
+
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+}
+
+resource "aws_appautoscaling_target" "app" {
+  service_namespace  = "ecs"
+  scalable_dimension = "ecs:service:DesiredCount"
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.app.name}"
+  min_capacity       = 2
+  max_capacity       = 10
+}
+```
+
+Not yet verified against live AWS: a Spinnaker deploy on a Terraform-created service leaving
+`terraform plan` empty.
+
 ## Verification boundary
 
 The repository's unit tests verify operation routing, request construction, ownership checks, and

@@ -40,6 +40,7 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceResponse
 import software.amazon.awssdk.services.elasticloadbalancingv2.ElasticLoadBalancingV2Client
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.DescribeTargetGroupsResponse
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.TargetGroup
+import spock.lang.Unroll
 
 class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperation {
 
@@ -622,4 +623,90 @@ class EcsNativeCreateServerGroupAtomicOperationSpec extends CommonAtomicOperatio
     updateRequest.loadBalancers() == existingLoadBalancers
   }
 
+
+  @Unroll
+  def 'copy existing capacity (#flagForm) leaves desired count and the scalable target untouched'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2'
+    def existingNetwork = NetworkConfiguration.builder().build()
+    def existingLoadBalancers = [LoadBalancer.builder().targetGroupArn('arn:target-group').containerName('app').containerPort(8080).build()]
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        account: 'test',
+        ecsClusterName: 'my-cluster',
+        availabilityZones: ['us-west-1': ['us-west-1a']],
+        // Deck's wizard always sends a capacity; the flag must win over it.
+        capacity: new ServerGroup.Capacity(1, 2, 3))
+    useSourceCapacity(description)
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    def updateRequest
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder()
+            .serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag())
+            .desiredCount(7).networkConfiguration(existingNetwork).loadBalancers(existingLoadBalancers)
+            .build())
+        .build()
+    ecs.updateService(_ as UpdateServiceRequest) >> { UpdateServiceRequest request ->
+      updateRequest = request
+      UpdateServiceResponse.builder()
+          .service(Service.builder().serviceName(serviceName).taskDefinition('new-task-def-arn').build())
+          .build()
+    }
+
+    when:
+    operation.operate([])
+
+    then:
+    updateRequest.taskDefinition() == 'new-task-def-arn'
+    updateRequest.desiredCount() == null
+    updateRequest.networkConfiguration() == existingNetwork
+    updateRequest.loadBalancers() == existingLoadBalancers
+    0 * operation.registerAutoScalingGroup(_, _, _)
+
+    where:
+    flagForm                         | useSourceCapacity
+    'top-level useSourceCapacity'    | { EcsNativeCreateServerGroupDescription d -> d.useSourceCapacity = true }
+    'source.useSourceCapacity'       | { EcsNativeCreateServerGroupDescription d ->
+      d.source = new CreateServerGroupDescription.Source(useSourceCapacity: true) }
+  }
+
+  def 'without copy existing capacity the stage capacity stays authoritative'() {
+    given:
+    def serviceName = 'mygreatapp-stack1-details2'
+    def description = new EcsNativeCreateServerGroupDescription(
+        application: 'mygreatapp', stack: 'stack1', freeFormDetails: 'details2',
+        account: 'test',
+        ecsClusterName: 'my-cluster',
+        availabilityZones: ['us-west-1': ['us-west-1a']],
+        useSourceCapacity: false,
+        capacity: new ServerGroup.Capacity(1, 2, 3))
+    def operation = Spy(EcsNativeCreateServerGroupAtomicOperation, constructorArgs: [description])
+    def updateRequest
+    operation.getAmazonEcsClient() >> ecs
+    operation.getCredentials() >> Mock(AmazonCredentials)
+    operation.resolveTaskRoleArn(_) >> 'arn:aws:iam::123456789012:role/ecsRole'
+    operation.registerTaskDefinition(ecs, _, _) >> TaskDefinition.builder().taskDefinitionArn('new-task-def-arn').build()
+    ecs.describeServices(_ as DescribeServicesRequest) >> DescribeServicesResponse.builder()
+        .services(Service.builder()
+            .serviceName(serviceName).status('ACTIVE').tags(EcsNativeServiceTag.tag()).desiredCount(7).build())
+        .build()
+    ecs.updateService(_ as UpdateServiceRequest) >> { UpdateServiceRequest request ->
+      updateRequest = request
+      UpdateServiceResponse.builder()
+          .service(Service.builder().serviceName(serviceName).taskDefinition('new-task-def-arn').build())
+          .build()
+    }
+
+    when:
+    operation.operate([])
+
+    then:
+    updateRequest.desiredCount() == 3
+    1 * operation.registerAutoScalingGroup(_, _, _) >> 'service/my-cluster/mygreatapp-stack1-details2'
+  }
 }
+

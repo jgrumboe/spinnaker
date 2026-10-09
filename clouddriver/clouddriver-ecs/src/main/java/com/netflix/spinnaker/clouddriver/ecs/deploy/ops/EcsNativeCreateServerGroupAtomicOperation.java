@@ -206,7 +206,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
     }
 
     Service service = ecs.updateService(requestBuilder.build()).service();
-    if (description.getCapacity() != null) {
+    if (description.getCapacity() != null && !keepExistingCapacity()) {
       registerAutoScalingGroup(getCredentials(), service, null);
     }
     updateTaskStatus("Done rolling ecs-native service " + existingServiceName + " in place.");
@@ -231,7 +231,7 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
       String taskDefinitionArn,
       EcsServerGroupName serverGroupName,
       Service existingService) {
-    if (description.getCapacity() == null) {
+    if (description.getCapacity() == null || keepExistingCapacity()) {
       return UpdateServiceRequest.builder()
           .cluster(description.getEcsClusterName())
           .service(existingService.serviceName())
@@ -418,6 +418,19 @@ public class EcsNativeCreateServerGroupAtomicOperation extends CreateServerGroup
       result.setDeployments(Collections.singleton(deployment));
     }
     return result;
+  }
+
+  /**
+   * Classic ecs honors "copy existing capacity" by reading the previous service's desired count and
+   * scalable target. ecs-native has no previous service: the durable service is its own source, so
+   * honoring the flag means not touching its desired count or scalable target (which may be owned
+   * by autoscaling or Terraform).
+   */
+  private boolean keepExistingCapacity() {
+    EcsNativeCreateServerGroupDescription settings = nativeDescription();
+    return Boolean.TRUE.equals(settings.getUseSourceCapacity())
+        || (settings.getSource() != null
+            && Boolean.TRUE.equals(settings.getSource().getUseSourceCapacity()));
   }
 
   private EcsNativeCreateServerGroupDescription nativeDescription() {

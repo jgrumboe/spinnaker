@@ -92,6 +92,13 @@ public class EcsNativeCreateServerGroupDescription extends CreateServerGroupDesc
   @Nullable Integer bakeTimeInMinutes;
 
   /**
+   * Deck's "copy existing capacity" flag. ecs-native updates the one durable service in place, so
+   * the existing service is its own source: when set (here or as {@code source.useSourceCapacity}),
+   * a deploy leaves the desired count and the Application Auto Scaling target untouched.
+   */
+  @Nullable Boolean useSourceCapacity;
+
+  /**
    * Opt-in: lifecycle stage at which ECS pauses a {@code BLUE_GREEN} deployment until a downstream
    * Continue stage (or the timeout) acts on it. One of {@code POST_SCALE_UP}, {@code
    * POST_TEST_TRAFFIC_SHIFT}, {@code PRE_PRODUCTION_TRAFFIC_SHIFT} or {@code
